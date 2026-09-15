@@ -1,0 +1,18 @@
+{
+  "musicRoot": "P:/Multimedia/Music/Artists",
+  "cacheFile": "./src/server/cache.json",
+  "enableOnlineLookup": false,
+
+  "specialFolders": [
+    {
+      "name": "Soundtracks",
+      "path": "P:/Multimedia/Music/Soundtracks",
+      "mode": "album-centric"
+    },
+    {
+      "name": "Various Artists",
+      "path": "P:/Multimedia/Music/Various Artists",
+      "mode": "compilation"
+    }
+  ]
+}
