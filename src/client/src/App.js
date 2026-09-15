@@ -135,6 +135,8 @@ function App() {
   const [selectedTrack, setSelectedTrack] = useState(null);
   const [playbackQueue, setPlaybackQueue] = useState([]);
   const [queueIndex, setQueueIndex] = useState(-1);
+  const playbackQueueRef = useRef([]);
+  const libraryTracksRef = useRef([]);
   const [availableOutputs, setAvailableOutputs] = useState([]);
   const outputSelectionSupported =
     typeof HTMLMediaElement !== "undefined" && typeof HTMLMediaElement.prototype.setSinkId === "function";
@@ -226,7 +228,7 @@ function App() {
           setAvailableOutputs(
             audioOutputs.map((device, index) => ({
               id: device.deviceId,
-              label: device.label || `Speaker output ${index + 1}`
+              label: device.label || `Speaker output ${index + 1} (${device.deviceId || "default"})`
             }))
           );
         }
@@ -311,14 +313,17 @@ function App() {
   }
 
   function handleAudioEnded() {
+    const activeQueue = playbackQueueRef.current;
+    const allTracks = libraryTracksRef.current;
+
     setQueueIndex(currentIndex => {
       const nextIndex = currentIndex + 1;
-      if (currentIndex < 0 || nextIndex >= playbackQueue.length) {
+      if (currentIndex < 0 || nextIndex >= activeQueue.length) {
         setPlaybackQueue([]);
         return -1;
       }
 
-      const nextTrack = library.tracks.find(track => track.id === playbackQueue[nextIndex]);
+      const nextTrack = allTracks.find(track => track.id === activeQueue[nextIndex]);
       if (!nextTrack) {
         setPlaybackQueue([]);
         return -1;
@@ -336,6 +341,14 @@ function App() {
       if (fromIndex < 0 || toIndex < 0 || toIndex >= current.length) {
         return current;
       }
+
+      useEffect(() => {
+        playbackQueueRef.current = playbackQueue;
+      }, [playbackQueue]);
+
+      useEffect(() => {
+        libraryTracksRef.current = library.tracks;
+      }, [library.tracks]);
 
       const nextOrder = [...current];
       [nextOrder[fromIndex], nextOrder[toIndex]] = [nextOrder[toIndex], nextOrder[fromIndex]];
