@@ -121,6 +121,7 @@ function ChartCard({ title, items, labelForItem }) {
 
 function App() {
   const audioRef = useRef(null);
+  const browserListRef = useRef(null);
   const artistItemRefs = useRef(new Map());
   const [stats, setStats] = useState(null);
   const [library, setLibrary] = useState({
@@ -537,6 +538,20 @@ function App() {
     }
   }, [filteredTracks, selectedTrack]);
 
+  useEffect(() => {
+    if (browseMode !== "artists") {
+      artistItemRefs.current.clear();
+      return;
+    }
+
+    const visibleArtists = new Set(filteredBrowseItems.map(item => item.artist));
+    for (const artist of artistItemRefs.current.keys()) {
+      if (!visibleArtists.has(artist)) {
+        artistItemRefs.current.delete(artist);
+      }
+    }
+  }, [browseMode, filteredBrowseItems]);
+
   function setArtistItemRef(artist, node) {
     if (node) {
       artistItemRefs.current.set(artist, node);
@@ -552,12 +567,15 @@ function App() {
       return;
     }
 
+    const listNode = browserListRef.current;
     const targetNode = artistItemRefs.current.get(targetArtist);
-    if (!targetNode) {
+    if (!listNode || !targetNode) {
       return;
     }
 
-    targetNode.scrollIntoView({ block: "start", inline: "nearest" });
+    const scrollTop =
+      targetNode.getBoundingClientRect().top - listNode.getBoundingClientRect().top + listNode.scrollTop;
+    listNode.scrollTo({ top: Math.max(0, scrollTop - 8), behavior: "smooth" });
   }
 
   if (loading) {
@@ -675,7 +693,7 @@ function App() {
         </div>
         <div className="browser-layout">
           <div className={showArtistJumpPicker ? "browser-list-shell" : undefined}>
-            <div className="browser-list">
+            <div className="browser-list" ref={browserListRef}>
               <h3>Browse {browseMode}</h3>
               <ul>
                 {filteredBrowseItems.map(item => {
@@ -722,7 +740,7 @@ function App() {
               </ul>
             </div>
             {showArtistJumpPicker && (
-              <div className="artist-jump-picker" aria-label="Jump to artist letter">
+              <nav className="artist-jump-picker" aria-label="Jump to artist letter">
                 {ALPHABET.map(letter => (
                   <button
                     key={letter}
@@ -735,7 +753,7 @@ function App() {
                     {letter}
                   </button>
                 ))}
-              </div>
+              </nav>
             )}
           </div>
 
