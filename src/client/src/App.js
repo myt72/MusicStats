@@ -397,6 +397,7 @@ function App() {
                 {filteredTracks.map(track => (
                   <li key={track.id} className={track.id === selectedTrack?.id ? "track-row active" : "track-row"}>
                     <button
+                      type="button"
                       className="track-row-button"
                       onClick={() => setSelectedTrack(track)}
                       title={`Play ${track.title}`}
@@ -419,6 +420,7 @@ function App() {
                       </span>
                     </button>
                     <button
+                      type="button"
                       className="track-play-button"
                       onClick={event => {
                         event.stopPropagation();

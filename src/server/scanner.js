@@ -50,9 +50,11 @@ function listMp3(root) {
 function listMp3Recursive(root) {
   const files = [];
   const queue = [root];
+  let index = 0;
 
-  while (queue.length > 0) {
-    const current = queue.shift();
+  while (index < queue.length) {
+    const current = queue[index];
+    index += 1;
     if (!current || !fs.existsSync(current)) {
       continue;
     }
