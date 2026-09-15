@@ -133,9 +133,7 @@ function App() {
   const [availableOutputs, setAvailableOutputs] = useState([]);
   const outputSelectionSupported =
     typeof HTMLMediaElement !== "undefined" && typeof HTMLMediaElement.prototype.setSinkId === "function";
-  const remotePlaybackPromptSupported =
-    typeof HTMLMediaElement !== "undefined" &&
-    typeof HTMLMediaElement.prototype.remote?.prompt === "function";
+  const [remotePlaybackPromptSupported, setRemotePlaybackPromptSupported] = useState(false);
   const [defaultOutputIds, setDefaultOutputIds] = useState(() => {
     if (typeof window === "undefined") {
       return [];
@@ -212,7 +210,20 @@ function App() {
   }, [defaultOutputIds]);
 
   useEffect(() => {
-    if (!outputSelectionSupported || !navigator.mediaDevices?.enumerateDevices) {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    try {
+      const audioProbe = document.createElement("audio");
+      setRemotePlaybackPromptSupported(typeof audioProbe.remote?.prompt === "function");
+    } catch {
+      setRemotePlaybackPromptSupported(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !outputSelectionSupported || !navigator.mediaDevices?.enumerateDevices) {
       return;
     }
 
@@ -374,13 +385,21 @@ function App() {
       return;
     }
 
-    const prompt = activeAudioNode.remote?.prompt;
+    let remotePlayback;
+    try {
+      remotePlayback = activeAudioNode.remote;
+    } catch {
+      setRemotePlaybackError("This browser does not expose a programmable cast/output picker.");
+      return;
+    }
+
+    const prompt = remotePlayback?.prompt;
     if (typeof prompt !== "function") {
       setRemotePlaybackError("This browser does not expose a programmable cast/output picker.");
       return;
     }
 
-    prompt.call(activeAudioNode.remote).catch(err => {
+    prompt.call(remotePlayback).catch(err => {
       const message = err?.name === "NotAllowedError" ? "Output picker was dismissed." : err?.message;
       setRemotePlaybackError(message || "Unable to open the playback target picker.");
     });
