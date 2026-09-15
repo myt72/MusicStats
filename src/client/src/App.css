@@ -28,7 +28,8 @@
 .header button,
 .tab,
 .browse-item,
-.track-row-button {
+.track-row-button,
+.track-play-button {
   font: inherit;
 }
 
@@ -254,7 +255,10 @@
 }
 
 .track-row {
-  display: block;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px;
+  align-items: center;
 }
 
 .track-row-button {
@@ -272,6 +276,19 @@
   gap: 8px;
 }
 
+.track-play-button {
+  border: 1px solid #334155;
+  border-radius: 8px;
+  background: #0f172a;
+  color: #cbd5e1;
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
 .track-cell {
   min-width: 0;
   overflow: hidden;
@@ -287,6 +304,11 @@
 .track-duration {
   color: #cbd5e1;
   font-variant-numeric: tabular-nums;
+}
+
+.track-row.active .track-play-button {
+  border-color: #38bdf8;
+  color: #67e8f9;
 }
 
 .album-art {

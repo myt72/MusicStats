@@ -385,42 +385,41 @@ function App() {
               <p className="panel-note">Select a track to play.</p>
             )}
 
-            <div className="track-list-grid" role="table" aria-label="Tracks">
-              <div role="rowgroup">
-                <div className="track-list-header" role="row">
-                  <span role="columnheader" aria-hidden />
-                  <span role="columnheader">Track</span>
-                  <span role="columnheader">Artist</span>
-                  <span className="track-album-header" role="columnheader">
-                    Album
-                  </span>
-                  <span role="columnheader">Length</span>
-                </div>
+            <div className="track-list-grid">
+              <div className="track-list-header">
+                <span aria-hidden />
+                <span>Track</span>
+                <span>Artist</span>
+                <span className="track-album-header">Album</span>
+                <span>Length</span>
               </div>
-              <ul className="track-list" role="rowgroup">
+              <ul className="track-list">
                 {filteredTracks.map(track => (
-                  <li key={track.id} role="row" className={track.id === selectedTrack?.id ? "track-row active" : "track-row"}>
+                  <li key={track.id} className={track.id === selectedTrack?.id ? "track-row active" : "track-row"}>
                     <button
                       className="track-row-button"
                       onClick={() => setSelectedTrack(track)}
                       title={`Play ${track.title}`}
-                      aria-label={`Play ${track.title} by ${track.artist}`}
+                      aria-label={`Select ${track.title} by ${track.artist}`}
                     >
-                      <span role="cell">
+                      <span>
                         <AlbumArt trackId={track.albumArtTrackId || track.id} size="small" />
                       </span>
-                      <span className="track-cell track-title" role="cell" title={track.title}>
+                      <span className="track-cell track-title" title={track.title}>
                         {track.title}
                       </span>
-                      <span className="track-cell" role="cell" title={track.artist}>
+                      <span className="track-cell" title={track.artist}>
                         {track.artist}
                       </span>
-                      <span className="track-cell track-album" role="cell" title={track.album}>
+                      <span className="track-cell track-album" title={track.album}>
                         {track.album}
                       </span>
-                      <span className="track-cell track-duration" role="cell">
+                      <span className="track-cell track-duration">
                         {formatDuration(track.durationSeconds)}
                       </span>
+                    </button>
+                    <button className="track-play-button" onClick={() => setSelectedTrack(track)} aria-label={`Play ${track.title} by ${track.artist}`}>
+                      ▶
                     </button>
                   </li>
                 ))}
