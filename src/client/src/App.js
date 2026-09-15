@@ -385,24 +385,28 @@ function App() {
               <p className="panel-note">Select a track to play.</p>
             )}
 
+            <div className="track-list-header">
+              <span aria-hidden />
+              <span>Track</span>
+              <span>Artist</span>
+              <span>Album</span>
+              <span>Length</span>
+            </div>
             <ul className="track-list">
               {filteredTracks.map(track => (
                 <li key={track.id} className={track.id === selectedTrack?.id ? "track-row active" : "track-row"}>
-                  <button className="track-details" onClick={() => setSelectedTrack(track)}>
+                  <button className="track-row-button" onClick={() => setSelectedTrack(track)} title={`Play ${track.title}`}>
                     <AlbumArt trackId={track.albumArtTrackId || track.id} size="small" />
-                    <span>
-                      <strong>{track.title}</strong>
-                      <span className="track-meta">
-                        {track.artist}
-                        <span className="sep">•</span>
-                        {track.album}
-                        <span className="sep">•</span>
-                        {formatDuration(track.durationSeconds)}
-                      </span>
+                    <span className="track-cell track-title" title={track.title}>
+                      {track.title}
                     </span>
-                  </button>
-                  <button className="play-button" onClick={() => setSelectedTrack(track)}>
-                    Play
+                    <span className="track-cell" title={track.artist}>
+                      {track.artist}
+                    </span>
+                    <span className="track-cell" title={track.album}>
+                      {track.album}
+                    </span>
+                    <span className="track-cell track-duration">{formatDuration(track.durationSeconds)}</span>
                   </button>
                 </li>
               ))}

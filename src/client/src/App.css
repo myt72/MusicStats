@@ -27,14 +27,12 @@
 
 .header button,
 .tab,
-.play-button,
 .browse-item,
-.track-details {
+.track-row-button {
   font: inherit;
 }
 
 .header button,
-.play-button,
 .tab,
 .clear-tab {
   background: #22c55e;
@@ -187,24 +185,23 @@
   overflow: auto;
 }
 
-.browse-item,
-.track-details {
+.browse-item {
   width: 100%;
   display: flex;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
   align-items: center;
   border: 1px solid #334155;
-  border-radius: 10px;
+  border-radius: 8px;
   background: #111827;
   color: inherit;
-  padding: 10px 12px;
+  padding: 7px 8px;
   cursor: pointer;
   text-align: left;
 }
 
 .browse-item.active,
-.track-row.active .track-details {
+.track-row.active .track-row-button {
   border-color: #38bdf8;
   background: #172554;
 }
@@ -238,28 +235,58 @@
   width: 100%;
 }
 
+.track-list-header {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 2fr) minmax(0, 1.3fr) minmax(0, 1.3fr) auto;
+  gap: 8px;
+  padding: 0 8px 4px;
+  color: #9ca3af;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .track-list {
   display: grid;
-  gap: 8px;
+  gap: 4px;
+  max-height: 520px;
+  overflow: auto;
 }
 
 .track-row {
+  display: block;
+}
+
+.track-row-button {
+  width: 100%;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
   align-items: center;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  background: #111827;
+  color: inherit;
+  padding: 6px 8px;
+  cursor: pointer;
+  text-align: left;
+  grid-template-columns: 28px minmax(0, 2fr) minmax(0, 1.3fr) minmax(0, 1.3fr) auto;
+  gap: 8px;
 }
 
-.track-details {
-  justify-content: flex-start;
+.track-cell {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.82rem;
 }
 
-.track-details span {
-  display: grid;
+.track-title {
+  font-weight: 600;
 }
 
-.play-button {
-  align-self: stretch;
+.track-duration {
+  color: #cbd5e1;
+  font-variant-numeric: tabular-nums;
 }
 
 .album-art {
@@ -271,8 +298,8 @@
 }
 
 .album-art-small {
-  width: 44px;
-  height: 44px;
+  width: 28px;
+  height: 28px;
 }
 
 .album-art-medium {
@@ -304,7 +331,6 @@
 
 @media (max-width: 900px) {
   .browser-layout,
-  .track-row,
   .track-panel-header,
   .browser-header,
   .header {
@@ -312,8 +338,19 @@
     flex-direction: column;
   }
 
-  .play-button,
+  .track-list-header,
+  .track-row-button,
   .search-input {
     width: 100%;
+  }
+
+  .track-list-header,
+  .track-row-button {
+    grid-template-columns: 24px minmax(0, 1.7fr) minmax(0, 1fr) auto;
+  }
+
+  .track-list-header span:nth-child(4),
+  .track-row-button .track-cell:nth-child(4) {
+    display: none;
   }
 }
