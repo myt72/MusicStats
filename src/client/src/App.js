@@ -4,7 +4,9 @@ import "./App.css";
 const DEFAULT_API_PORT = "3001";
 const API_ORIGIN =
   process.env.REACT_APP_API_ORIGIN ||
-  `${window.location.protocol}//${window.location.hostname || "localhost"}:${DEFAULT_API_PORT}`;
+  (process.env.NODE_ENV === "development" && window.location.port !== DEFAULT_API_PORT
+    ? `${window.location.protocol}//${window.location.hostname || "localhost"}:${DEFAULT_API_PORT}`
+    : window.location.origin);
 const API_BASE_URL = `${API_ORIGIN.replace(/\/$/, "")}/api`;
 const numberFormatter = new Intl.NumberFormat();
 
