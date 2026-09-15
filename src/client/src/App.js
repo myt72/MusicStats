@@ -222,10 +222,11 @@ function App() {
       try {
         const devices = await navigator.mediaDevices.enumerateDevices();
         if (!cancelled) {
+          const audioOutputs = devices.filter(device => device.kind === "audiooutput");
           setAvailableOutputs(
-            devices.filter(device => device.kind === "audiooutput").map(device => ({
+            audioOutputs.map((device, index) => ({
               id: device.deviceId,
-              label: device.label || "Speaker output"
+              label: device.label || `Speaker output ${index + 1}`
             }))
           );
         }
@@ -310,21 +311,22 @@ function App() {
   }
 
   function handleAudioEnded() {
-    if (queueIndex < 0 || queueIndex + 1 >= playbackQueue.length) {
-      setPlaybackQueue([]);
-      setQueueIndex(-1);
-      return;
-    }
+    setQueueIndex(currentIndex => {
+      const nextIndex = currentIndex + 1;
+      if (currentIndex < 0 || nextIndex >= playbackQueue.length) {
+        setPlaybackQueue([]);
+        return -1;
+      }
 
-    const nextTrack = library.tracks.find(track => track.id === playbackQueue[queueIndex + 1]);
-    if (!nextTrack) {
-      setPlaybackQueue([]);
-      setQueueIndex(-1);
-      return;
-    }
+      const nextTrack = library.tracks.find(track => track.id === playbackQueue[nextIndex]);
+      if (!nextTrack) {
+        setPlaybackQueue([]);
+        return -1;
+      }
 
-    setQueueIndex(currentIndex => currentIndex + 1);
-    setSelectedTrack(nextTrack);
+      setSelectedTrack(nextTrack);
+      return nextIndex;
+    });
   }
 
   function moveDefaultOutput(outputId, direction) {
@@ -467,11 +469,14 @@ function App() {
         </div>
         <div className="header-actions">
           <button onClick={rescan}>Refresh from directory</button>
-          <button onClick={() => setUiMode(current => (current === "phone" ? "default" : "phone"))}>
+          <button
+            aria-pressed={isPhoneMode}
+            onClick={() => setUiMode(current => (current === "phone" ? "default" : "phone"))}
+          >
             {isPhoneMode ? "Desktop view" : "Phone view"}
           </button>
           {isPhoneMode && (
-            <button onClick={() => setShowPhoneStats(current => !current)}>
+            <button aria-pressed={showPhoneStats} onClick={() => setShowPhoneStats(current => !current)}>
               {showPhoneStats ? "Hide stats" : "Show stats"}
             </button>
           )}
