@@ -1,14 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
-
-const DEFAULT_API_PORT = "3001";
-const DEFAULT_CLIENT_DEV_PORT = "3000";
-const API_ORIGIN =
-  process.env.REACT_APP_API_ORIGIN ||
-  (process.env.NODE_ENV === "development" && window.location.port === DEFAULT_CLIENT_DEV_PORT
-    ? `${window.location.protocol}//${window.location.hostname || "localhost"}:${DEFAULT_API_PORT}`
-    : window.location.origin);
-const API_BASE_URL = `${API_ORIGIN.replace(/\/$/, "")}/api`;
+import { API_BASE_URL } from "./config";
 const numberFormatter = new Intl.NumberFormat();
 const PHONE_MEDIA_QUERY = "(max-width: 700px)";
 const DEFAULT_OUTPUTS_STORAGE_KEY = "musicstats.defaultOutputs";
