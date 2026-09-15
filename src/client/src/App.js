@@ -386,7 +386,7 @@ function App() {
             )}
 
             <div className="track-list-grid">
-              <div className="track-list-header">
+              <div className="track-list-header" aria-hidden="true">
                 <span aria-hidden />
                 <span>Track</span>
                 <span>Artist</span>
@@ -418,7 +418,14 @@ function App() {
                         {formatDuration(track.durationSeconds)}
                       </span>
                     </button>
-                    <button className="track-play-button" onClick={() => setSelectedTrack(track)} aria-label={`Play ${track.title} by ${track.artist}`}>
+                    <button
+                      className="track-play-button"
+                      onClick={event => {
+                        event.stopPropagation();
+                        setSelectedTrack(track);
+                      }}
+                      aria-label={`Play ${track.title} by ${track.artist}`}
+                    >
                       ▶
                     </button>
                   </li>
