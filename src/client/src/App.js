@@ -1,8 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
 import "./App.css";
 
-const API_PORT = "3001";
-const API_BASE_URL = `${window.location.protocol}//${window.location.hostname || "localhost"}:${API_PORT}/api`;
+const DEFAULT_API_PORT = "3001";
+const API_ORIGIN =
+  process.env.REACT_APP_API_ORIGIN ||
+  `${window.location.protocol}//${window.location.hostname || "localhost"}:${DEFAULT_API_PORT}`;
+const API_BASE_URL = `${API_ORIGIN.replace(/\/$/, "")}/api`;
 const numberFormatter = new Intl.NumberFormat();
 
 function formatCount(value) {
