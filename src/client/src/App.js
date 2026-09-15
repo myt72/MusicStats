@@ -468,25 +468,12 @@ function App() {
     const artistLabels = filteredBrowseItems
       .map(item => item.artist)
       .filter(artist => typeof artist === "string" && artist.trim());
-    const firstArtistsByLetter = {};
     const nextTargets = {};
 
     for (const artist of artistLabels) {
       const artistKey = getArtistJumpKey(artist);
-      if (artistKey && !firstArtistsByLetter[artistKey]) {
-        firstArtistsByLetter[artistKey] = artist;
-      }
-    }
-
-    let nearestArtist = null;
-    for (let index = ALPHABET.length - 1; index >= 0; index -= 1) {
-      const letter = ALPHABET[index];
-      if (firstArtistsByLetter[letter]) {
-        nearestArtist = firstArtistsByLetter[letter];
-      }
-
-      if (nearestArtist) {
-        nextTargets[letter] = nearestArtist;
+      if (artistKey && !nextTargets[artistKey]) {
+        nextTargets[artistKey] = artist;
       }
     }
 
