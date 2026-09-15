@@ -21,6 +21,8 @@ const ARTWORK_FILE_NAMES = [
   "album.jpeg",
   "album.png"
 ];
+const FILE_ROUTE_WINDOW_MS = 60 * 1000;
+const FILE_ROUTE_MAX_REQUESTS = 240;
 
 const DEFAULT_EXCLUSIONS = {
   topArtists: ["Various Artists"],
@@ -36,6 +38,8 @@ const config = normalizeConfig(JSON.parse(fs.readFileSync(configPath, "utf-8")))
 const app = express();
 const PORT = 3001;
 const artworkCache = new Map();
+const artworkRequests = new Map();
+const streamRequests = new Map();
 let inflightStatsPromise = null;
 
 app.use(express.json());
@@ -44,34 +48,26 @@ app.use((req, res, next) => {
   next();
 });
 
-function createRateLimiter({ windowMs, maxRequests }) {
-  const requests = new Map();
+function isRateLimited(req, res, requests) {
+  const now = Date.now();
+  const key = req.ip || "unknown";
+  const existing = requests.get(key);
 
-  return (req, res, next) => {
-    const now = Date.now();
-    const key = req.ip || "unknown";
-    const existing = requests.get(key);
+  if (!existing || now - existing.windowStart >= FILE_ROUTE_WINDOW_MS) {
+    requests.set(key, { count: 1, windowStart: now });
+    return false;
+  }
 
-    if (!existing || now - existing.windowStart >= windowMs) {
-      requests.set(key, { count: 1, windowStart: now });
-      next();
-      return;
-    }
+  if (existing.count >= FILE_ROUTE_MAX_REQUESTS) {
+    const retryAfterSeconds = Math.ceil((FILE_ROUTE_WINDOW_MS - (now - existing.windowStart)) / 1000);
+    res.set("Retry-After", String(retryAfterSeconds));
+    res.status(429).json({ error: "Too many file requests. Please try again shortly." });
+    return true;
+  }
 
-    if (existing.count >= maxRequests) {
-      const retryAfterSeconds = Math.ceil((windowMs - (now - existing.windowStart)) / 1000);
-      res.set("Retry-After", String(retryAfterSeconds));
-      res.status(429).json({ error: "Too many file requests. Please try again shortly." });
-      return;
-    }
-
-    existing.count += 1;
-    next();
-  };
+  existing.count += 1;
+  return false;
 }
-
-const artworkRateLimiter = createRateLimiter({ windowMs: 60 * 1000, maxRequests: 240 });
-const streamRateLimiter = createRateLimiter({ windowMs: 60 * 1000, maxRequests: 240 });
 
 function normalizeConfig(rawConfig) {
   const exclusions = rawConfig.exclusions || {};
@@ -321,8 +317,12 @@ app.get("/api/library", async (req, res) => {
   }
 });
 
-app.get("/api/tracks/:trackId/art", artworkRateLimiter, async (req, res) => {
+app.get("/api/tracks/:trackId/art", async (req, res) => {
   try {
+    if (isRateLimited(req, res, artworkRequests)) {
+      return undefined;
+    }
+
     const stats = await getStatsPayload();
     const requestedTrack = findTrack(stats, req.params.trackId);
 
@@ -345,8 +345,12 @@ app.get("/api/tracks/:trackId/art", artworkRateLimiter, async (req, res) => {
   }
 });
 
-app.get("/api/tracks/:trackId/stream", streamRateLimiter, async (req, res) => {
+app.get("/api/tracks/:trackId/stream", async (req, res) => {
   try {
+    if (isRateLimited(req, res, streamRequests)) {
+      return undefined;
+    }
+
     const stats = await getStatsPayload();
     const track = findTrack(stats, req.params.trackId);
 
