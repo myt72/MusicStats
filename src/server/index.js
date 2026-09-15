@@ -44,6 +44,35 @@ app.use((req, res, next) => {
   next();
 });
 
+function createRateLimiter({ windowMs, maxRequests }) {
+  const requests = new Map();
+
+  return (req, res, next) => {
+    const now = Date.now();
+    const key = req.ip || "unknown";
+    const existing = requests.get(key);
+
+    if (!existing || now - existing.windowStart >= windowMs) {
+      requests.set(key, { count: 1, windowStart: now });
+      next();
+      return;
+    }
+
+    if (existing.count >= maxRequests) {
+      const retryAfterSeconds = Math.ceil((windowMs - (now - existing.windowStart)) / 1000);
+      res.set("Retry-After", String(retryAfterSeconds));
+      res.status(429).json({ error: "Too many file requests. Please try again shortly." });
+      return;
+    }
+
+    existing.count += 1;
+    next();
+  };
+}
+
+const artworkRateLimiter = createRateLimiter({ windowMs: 60 * 1000, maxRequests: 240 });
+const streamRateLimiter = createRateLimiter({ windowMs: 60 * 1000, maxRequests: 240 });
+
 function normalizeConfig(rawConfig) {
   const exclusions = rawConfig.exclusions || {};
 
@@ -292,7 +321,7 @@ app.get("/api/library", async (req, res) => {
   }
 });
 
-app.get("/api/tracks/:trackId/art", async (req, res) => {
+app.get("/api/tracks/:trackId/art", artworkRateLimiter, async (req, res) => {
   try {
     const stats = await getStatsPayload();
     const requestedTrack = findTrack(stats, req.params.trackId);
@@ -316,7 +345,7 @@ app.get("/api/tracks/:trackId/art", async (req, res) => {
   }
 });
 
-app.get("/api/tracks/:trackId/stream", async (req, res) => {
+app.get("/api/tracks/:trackId/stream", streamRateLimiter, async (req, res) => {
   try {
     const stats = await getStatsPayload();
     const track = findTrack(stats, req.params.trackId);
