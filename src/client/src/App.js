@@ -459,7 +459,11 @@ function App() {
     return nextTracks.slice(0, 80);
   }, [library.tracks, selectedFilter, browseQuery]);
   const isPhoneMode = uiMode === "phone";
-  const showArtistJumpPicker = isPhoneMode && browseMode === "artists" && filteredBrowseItems.length > 0;
+  const isPhoneViewport =
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia(PHONE_MEDIA_QUERY).matches;
+  const showArtistJumpPicker = isPhoneViewport && browseMode === "artists" && filteredBrowseItems.length > 0;
   const artistJumpTargets = useMemo(() => {
     if (!showArtistJumpPicker) {
       return {};
