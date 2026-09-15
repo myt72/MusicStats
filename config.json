@@ -6,12 +6,12 @@
   "specialFolders": [
     {
       "name": "Soundtracks",
-      "path": "P:/Multimedia/Music/Soundtracks",
+      "path": "P:/Multimedia/Music/Artists/Soundtracks",
       "mode": "album-centric"
     },
     {
       "name": "Various Artists",
-      "path": "P:/Multimedia/Music/Various Artists",
+      "path": "P:/Multimedia/Music/Artists/Various Artists",
       "mode": "compilation"
     }
   ]
