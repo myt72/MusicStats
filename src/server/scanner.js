@@ -2,6 +2,8 @@ import fs from "fs";
 import path from "path";
 import { parseFile } from "music-metadata";
 
+const DEFAULT_SPECIAL_ROOT_FOLDERS = ["_mp3", "_incoming"];
+
 async function readMetadata(filePath) {
   try {
     const meta = await parseFile(filePath, { skipCovers: true });
@@ -43,6 +45,39 @@ function listMp3(root) {
     .filter(f => f.isFile() && f.name.toLowerCase().endsWith(".mp3"))
     .map(f => path.join(root, f.name))
     .sort((a, b) => a.localeCompare(b));
+}
+
+function listMp3Recursive(root) {
+  const files = [];
+  const queue = [root];
+  let index = 0;
+
+  while (index < queue.length) {
+    const current = queue[index];
+    index += 1;
+    if (!current || !fs.existsSync(current)) {
+      continue;
+    }
+
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const entryPath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        queue.push(entryPath);
+      } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".mp3")) {
+        files.push(entryPath);
+      }
+    }
+  }
+
+  return files.sort((a, b) => a.localeCompare(b));
+}
+
+function normalizeSpecialRootFolderNames(config) {
+  const configuredFolders = Array.isArray(config.specialRootFolders)
+    ? config.specialRootFolders
+    : DEFAULT_SPECIAL_ROOT_FOLDERS;
+
+  return new Set(configuredFolders.map(name => String(name).trim().toLowerCase()).filter(Boolean));
 }
 
 async function scanNormalRoot(root, skippedFolderPaths = new Set()) {
@@ -121,12 +156,40 @@ async function scanVariousArtists(folderConfig) {
   return tracks;
 }
 
+async function scanSpecialRoot(root) {
+  const files = listMp3Recursive(root);
+  const tracks = [];
+
+  for (const file of files) {
+    const meta = await readMetadata(file);
+    tracks.push({
+      file,
+      artistFolder: null,
+      albumFolder: null,
+      ...meta
+    });
+  }
+
+  return tracks;
+}
+
 export async function scanLibrary(config) {
   const allTracks = [];
   const specialFolders = Array.isArray(config.specialFolders) ? config.specialFolders : [];
-  const skippedFolderPaths = new Set(specialFolders.map(folder => path.resolve(folder.path)));
+  const specialRootFolderNames = normalizeSpecialRootFolderNames(config);
+  const specialRootFolders = listDirs(config.musicRoot).filter(folderName =>
+    specialRootFolderNames.has(folderName.toLowerCase())
+  );
+  const skippedFolderPaths = new Set([
+    ...specialFolders.map(folder => path.resolve(folder.path)),
+    ...specialRootFolders.map(folderName => path.resolve(path.join(config.musicRoot, folderName)))
+  ]);
 
   allTracks.push(...(await scanNormalRoot(config.musicRoot, skippedFolderPaths)));
+
+  for (const folderName of specialRootFolders) {
+    allTracks.push(...(await scanSpecialRoot(path.join(config.musicRoot, folderName))));
+  }
 
   for (const sf of specialFolders) {
     if (sf.mode === "album-centric") {

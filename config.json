@@ -2,6 +2,7 @@
   "musicRoot": "P:/Multimedia/Music/Artists",
   "cacheFile": "./src/server/cache.json",
   "enableOnlineLookup": false,
+  "specialRootFolders": ["_mp3", "_incoming"],
   "specialFolders": [
     {
       "name": "Soundtracks",
