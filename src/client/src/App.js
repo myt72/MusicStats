@@ -136,6 +136,8 @@ function App() {
   const [playbackQueue, setPlaybackQueue] = useState([]);
   const [queueIndex, setQueueIndex] = useState(-1);
   const [availableOutputs, setAvailableOutputs] = useState([]);
+  const outputSelectionSupported =
+    typeof HTMLMediaElement !== "undefined" && typeof HTMLMediaElement.prototype.setSinkId === "function";
   const [defaultOutputIds, setDefaultOutputIds] = useState(() => {
     if (typeof window === "undefined") {
       return [];
@@ -212,6 +214,7 @@ function App() {
 
   useEffect(() => {
     if (!navigator.mediaDevices?.enumerateDevices) {
+      setOutputError("Output target selection is not supported by this browser.");
       return;
     }
 
@@ -244,7 +247,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!selectedTrack || !audioRef.current || typeof audioRef.current.setSinkId !== "function") {
+    if (!selectedTrack || !audioRef.current || !outputSelectionSupported) {
       return;
     }
 
@@ -256,7 +259,7 @@ function App() {
       .setSinkId(selectedOutput || "")
       .then(() => setOutputError(null))
       .catch(err => setOutputError(err.message || "Unable to set output device."));
-  }, [selectedTrack, availableOutputs, defaultOutputIds]);
+  }, [selectedTrack, availableOutputs, defaultOutputIds, outputSelectionSupported]);
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
@@ -264,11 +267,7 @@ function App() {
     }
 
     const mediaQuery = window.matchMedia(PHONE_MEDIA_QUERY);
-    const syncMode = event => {
-      if (event.matches) {
-        setUiMode("phone");
-      }
-    };
+    const syncMode = event => setUiMode(event.matches ? "phone" : "default");
 
     mediaQuery.addEventListener?.("change", syncMode);
     return () => mediaQuery.removeEventListener?.("change", syncMode);
@@ -296,6 +295,20 @@ function App() {
       setPlaybackQueue([]);
       setQueueIndex(-1);
       return;
+    }
+
+    function moveDefaultOutput(outputId, direction) {
+      setDefaultOutputIds(current => {
+        const fromIndex = current.indexOf(outputId);
+        const toIndex = fromIndex + direction;
+        if (fromIndex < 0 || toIndex < 0 || toIndex >= current.length) {
+          return current;
+        }
+
+        const nextOrder = [...current];
+        [nextOrder[fromIndex], nextOrder[toIndex]] = [nextOrder[toIndex], nextOrder[fromIndex]];
+        return nextOrder;
+      });
     }
 
     const nextTrack = library.tracks.find(track => track.id === playbackQueue[queueIndex + 1]);
@@ -517,11 +530,13 @@ function App() {
           )}
         </div>
         <div className="output-panel">
-          <h3>Default output targets</h3>
+          <h3>Preferred output targets</h3>
           <p className="panel-note">
-            Selected outputs are remembered for this browser and auto-applied when playback starts.
+            Selected outputs are saved as an ordered fallback list and auto-applied when playback starts.
           </p>
-          {availableOutputs.length ? (
+          {!outputSelectionSupported ? (
+            <p className="panel-note">This browser does not support selecting an audio output target.</p>
+          ) : availableOutputs.length ? (
             <ul className="output-list">
               {availableOutputs.map(output => (
                 <li key={output.id}>
@@ -539,14 +554,24 @@ function App() {
                     />
                     <span>{output.label}</span>
                   </label>
+                  {defaultOutputIds.includes(output.id) && (
+                    <span className="output-actions">
+                      <button type="button" className="track-play-button" onClick={() => moveDefaultOutput(output.id, -1)}>
+                        ↑
+                      </button>
+                      <button type="button" className="track-play-button" onClick={() => moveDefaultOutput(output.id, 1)}>
+                        ↓
+                      </button>
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>
           ) : (
             <p className="panel-note">No selectable browser outputs were detected.</p>
           )}
-          {defaultOutputIds.length > 1 && (
-            <p className="panel-note">Multiple targets are saved. Browser playback will use the first available target.</p>
+          {defaultOutputIds.length > 0 && (
+            <p className="panel-note">Playback uses the first available output in this order.</p>
           )}
           {outputError && <p className="panel-note">{outputError}</p>}
         </div>

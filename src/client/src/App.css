@@ -182,11 +182,23 @@
   gap: 6px;
 }
 
+.output-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
 .output-list label {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 0.86rem;
+}
+
+.output-actions {
+  display: flex;
+  gap: 6px;
 }
 
 .tab {
