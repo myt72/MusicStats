@@ -35,7 +35,7 @@ const configPath = path.join(__dirname, "..", "..", "config.json");
 const config = normalizeConfig(JSON.parse(fs.readFileSync(configPath, "utf-8")));
 
 const app = express();
-const PORT = 3001;
+const PORT = Number.parseInt(process.env.PORT || "3001", 10);
 const artworkCache = new Map();
 const fileRouteLimiter = rateLimit({
   windowMs: 60 * 1000,
