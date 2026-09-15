@@ -3,6 +3,7 @@ import "./App.css";
 import { API_BASE_URL } from "./config";
 const numberFormatter = new Intl.NumberFormat();
 const PHONE_MEDIA_QUERY = "(max-width: 700px)";
+const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 const DEFAULT_OUTPUTS_STORAGE_KEY = "musicstats.defaultOutputs";
 const BUILT_IN_OUTPUT_ID = "";
 
@@ -62,6 +63,12 @@ function sortAlbumTracks(tracks) {
   });
 }
 
+function getArtistJumpKey(value) {
+  const trimmedValue = String(value || "").trim().toUpperCase();
+  const match = trimmedValue.match(/[A-Z]/);
+  return match ? match[0] : null;
+}
+
 function AlbumArt({ trackId, size = "medium" }) {
   const [failed, setFailed] = useState(false);
 
@@ -114,6 +121,10 @@ function ChartCard({ title, items, labelForItem }) {
 
 function App() {
   const audioRef = useRef(null);
+  const browserListRef = useRef(null);
+  const artistItemRefs = useRef(new Map());
+  const artistItemRefCallbacks = useRef(new Map());
+  const artistJumpPickerRef = useRef(null);
   const [stats, setStats] = useState(null);
   const [library, setLibrary] = useState({
     browse: { artists: [], albums: [], genres: [], years: [] },
@@ -154,6 +165,13 @@ function App() {
     }
 
     return window.matchMedia(PHONE_MEDIA_QUERY).matches ? "phone" : "default";
+  });
+  const [isPhoneViewport, setIsPhoneViewport] = useState(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return false;
+    }
+
+    return window.matchMedia(PHONE_MEDIA_QUERY).matches;
   });
   const [showPhoneStats, setShowPhoneStats] = useState(false);
 
@@ -313,7 +331,10 @@ function App() {
     }
 
     const mediaQuery = window.matchMedia(PHONE_MEDIA_QUERY);
-    const syncMode = event => setUiMode(event.matches ? "phone" : "default");
+    const syncMode = event => {
+      setIsPhoneViewport(event.matches);
+      setUiMode(event.matches ? "phone" : "default");
+    };
 
     if (typeof mediaQuery.addEventListener === "function") {
       mediaQuery.addEventListener("change", syncMode);
@@ -412,13 +433,11 @@ function App() {
   const browseQuery = searchQuery.trim().toLowerCase();
 
   const filteredBrowseItems = useMemo(() => {
-    if (!browseQuery) {
-      return browseItems.slice(0, 250);
-    }
+    const nextItems = !browseQuery
+      ? browseItems
+      : browseItems.filter(item => getBrowseValue(item, browseMode).toLowerCase().includes(browseQuery));
 
-    return browseItems
-      .filter(item => getBrowseValue(item, browseMode).toLowerCase().includes(browseQuery))
-      .slice(0, 250);
+    return browseMode === "artists" ? nextItems : nextItems.slice(0, 250);
   }, [browseItems, browseMode, browseQuery]);
 
   const filteredTracks = useMemo(() => {
@@ -450,6 +469,26 @@ function App() {
     return nextTracks.slice(0, 80);
   }, [library.tracks, selectedFilter, browseQuery]);
   const isPhoneMode = uiMode === "phone";
+  const showArtistJumpPicker = isPhoneViewport && browseMode === "artists" && filteredBrowseItems.length > 0;
+  const artistJumpTargets = useMemo(() => {
+    if (!showArtistJumpPicker) {
+      return {};
+    }
+
+    const artistLabels = filteredBrowseItems
+      .map(item => item.artist)
+      .filter(artist => typeof artist === "string" && artist.trim());
+    const nextTargets = {};
+
+    for (const artist of artistLabels) {
+      const artistKey = getArtistJumpKey(artist);
+      if (artistKey && !nextTargets[artistKey]) {
+        nextTargets[artistKey] = artist;
+      }
+    }
+
+    return nextTargets;
+  }, [filteredBrowseItems, showArtistJumpPicker]);
   const selectedArtistAlbums = useMemo(() => {
     if (selectedFilter?.type !== "artist") {
       return [];
@@ -506,6 +545,93 @@ function App() {
       setSelectedTrack(null);
     }
   }, [filteredTracks, selectedTrack]);
+
+  useEffect(() => {
+    if (browseMode !== "artists") {
+      artistItemRefs.current.clear();
+      artistItemRefCallbacks.current.clear();
+      return;
+    }
+
+    const visibleArtists = new Set(filteredBrowseItems.map(item => item.artist));
+    for (const artist of artistItemRefs.current.keys()) {
+      if (!visibleArtists.has(artist)) {
+        artistItemRefs.current.delete(artist);
+      }
+    }
+
+    for (const artist of artistItemRefCallbacks.current.keys()) {
+      if (!visibleArtists.has(artist)) {
+        artistItemRefCallbacks.current.delete(artist);
+      }
+    }
+  }, [browseMode, filteredBrowseItems]);
+
+  function getArtistItemRefCallback(artist) {
+    if (!artistItemRefCallbacks.current.has(artist)) {
+      artistItemRefCallbacks.current.set(artist, node => {
+        if (node) {
+          artistItemRefs.current.set(artist, node);
+          return;
+        }
+
+        artistItemRefs.current.delete(artist);
+      });
+    }
+
+    return artistItemRefCallbacks.current.get(artist);
+  }
+
+  function jumpToArtistLetter(letter) {
+    const targetArtist = artistJumpTargets[letter];
+    if (!targetArtist) {
+      return;
+    }
+
+    const listNode = browserListRef.current;
+    const targetNode = artistItemRefs.current.get(targetArtist);
+    if (!listNode || !targetNode) {
+      return;
+    }
+
+    const scrollTop =
+      targetNode.getBoundingClientRect().top - listNode.getBoundingClientRect().top + listNode.scrollTop;
+    listNode.scrollTo({ top: Math.max(0, scrollTop - 8), behavior: "smooth" });
+  }
+
+  function handleArtistJumpPickerKeyDown(event) {
+    if (!artistJumpPickerRef.current) {
+      return;
+    }
+
+    const supportedKeys = ["ArrowUp", "ArrowDown", "Home", "End"];
+    if (!supportedKeys.includes(event.key)) {
+      return;
+    }
+
+    const enabledButtons = Array.from(artistJumpPickerRef.current.querySelectorAll("button:not(:disabled)"));
+    if (!enabledButtons.length) {
+      return;
+    }
+
+    event.preventDefault();
+    const currentIndex = enabledButtons.indexOf(event.currentTarget);
+    if (event.key === "Home") {
+      enabledButtons[0].focus();
+      return;
+    }
+
+    if (event.key === "End") {
+      enabledButtons[enabledButtons.length - 1].focus();
+      return;
+    }
+
+    const direction = event.key === "ArrowUp" ? -1 : 1;
+    const fallbackIndex = direction > 0 ? 0 : enabledButtons.length - 1;
+    const nextIndex = currentIndex >= 0 ? currentIndex + direction : fallbackIndex;
+    const boundedIndex = Math.min(enabledButtons.length - 1, Math.max(0, nextIndex));
+    enabledButtons[boundedIndex].focus();
+  }
 
   if (loading) {
     return <div className="app">Loading...</div>;
@@ -620,120 +746,71 @@ function App() {
             </button>
           )}
         </div>
-        <div className="output-panel">
-          <h3>Output target preferences</h3>
-          <p className="panel-note">
-            The player cast/output menu can show network targets that browsers do not expose for pre-selection.
-          </p>
-          {remotePlaybackPromptSupported && (
-            <p className="panel-note">
-              <button type="button" className="tab" onClick={openPlaybackTargetPicker}>
-                Open player target picker
-              </button>
-            </p>
-          )}
-          {!outputSelectionSupported ? (
-            <p className="panel-note">
-              This browser does not support pre-selecting browser audio outputs. Use the player cast/output control
-              during playback.
-            </p>
-          ) : browserOutputTargets.length ? (
-            <ul className="output-list">
-              {browserOutputTargets.map(output => (
-                <li key={output.id}>
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={defaultOutputIds.includes(output.id)}
-                      onChange={() =>
-                        setDefaultOutputIds(current =>
-                          current.includes(output.id)
-                            ? current.filter(id => id !== output.id)
-                            : [...current, output.id]
-                        )
-                      }
-                    />
-                    <span>{output.label}</span>
-                  </label>
-                  {defaultOutputIds.includes(output.id) && (
-                    <span className="output-actions">
-                      <button
-                        type="button"
-                        className="track-play-button"
-                        aria-label={`Move ${output.label} up in output order`}
-                        onClick={() => moveDefaultOutput(output.id, -1)}
-                      >
-                        ↑
-                      </button>
-                      <button
-                        type="button"
-                        className="track-play-button"
-                        aria-label={`Move ${output.label} down in output order`}
-                        onClick={() => moveDefaultOutput(output.id, 1)}
-                      >
-                        ↓
-                      </button>
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="panel-note">
-              No browser-managed outputs were detected. Available cast/network targets can still appear in the player
-              control while a song is playing.
-            </p>
-          )}
-          {defaultOutputIds.length > 0 && (
-            <p className="panel-note">When supported, playback uses the first available browser output in this order.</p>
-          )}
-          {outputError && <p className="panel-note">{outputError}</p>}
-          {remotePlaybackError && <p className="panel-note">{remotePlaybackError}</p>}
-        </div>
-
         <div className="browser-layout">
-          <div className="browser-list">
-            <h3>Browse {browseMode}</h3>
-            <ul>
-              {filteredBrowseItems.map(item => {
-                const label = getBrowseValue(item, browseMode);
-                const isSelected =
-                  selectedFilter &&
-                  ((browseMode === "artists" && selectedFilter.type === "artist" && selectedFilter.value === item.artist) ||
-                    (browseMode === "albums" &&
-                      selectedFilter.type === "album" &&
-                      selectedFilter.value.album === item.album &&
-                      selectedFilter.value.artist === item.artist) ||
-                    (browseMode === "genres" && selectedFilter.type === "genre" && selectedFilter.value === item.genre) ||
-                    (browseMode === "years" && selectedFilter.type === "year" && selectedFilter.value === item.year));
+          <div className={showArtistJumpPicker ? "browser-list-shell" : undefined}>
+            <div className="browser-list" ref={browserListRef}>
+              <h3>Browse {browseMode}</h3>
+              <ul>
+                {filteredBrowseItems.map(item => {
+                  const label = getBrowseValue(item, browseMode);
+                  const isSelected =
+                    selectedFilter &&
+                    ((browseMode === "artists" && selectedFilter.type === "artist" && selectedFilter.value === item.artist) ||
+                      (browseMode === "albums" &&
+                        selectedFilter.type === "album" &&
+                        selectedFilter.value.album === item.album &&
+                        selectedFilter.value.artist === item.artist) ||
+                      (browseMode === "genres" &&
+                        selectedFilter.type === "genre" &&
+                        selectedFilter.value === item.genre) ||
+                      (browseMode === "years" && selectedFilter.type === "year" && selectedFilter.value === item.year));
 
-                return (
-                  <li key={`${browseMode}-${label}`}>
-                    <button
-                      className={isSelected ? "browse-item active" : "browse-item"}
-                      onClick={() => {
-                        if (browseMode === "artists") {
-                          setSelectedFilter({ type: "artist", value: item.artist });
-                          setArtistViewMode("albums");
-                        } else if (browseMode === "albums") {
-                          setSelectedFilter({ type: "album", value: { album: item.album, artist: item.artist } });
-                          setArtistViewMode("tracks");
-                        } else if (browseMode === "genres") {
-                          setSelectedFilter({ type: "genre", value: item.genre });
-                          setArtistViewMode("tracks");
-                        } else {
-                          setSelectedFilter({ type: "year", value: item.year });
-                          setArtistViewMode("tracks");
-                        }
-                      }}
-                    >
-                      <span>{label}</span>
-                      <span className="browse-meta">{formatCount(item.trackCount)} tracks</span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
+                  return (
+                    <li key={`${browseMode}-${label}`}>
+                      <button
+                        ref={browseMode === "artists" ? getArtistItemRefCallback(item.artist) : undefined}
+                        className={isSelected ? "browse-item active" : "browse-item"}
+                        onClick={() => {
+                          if (browseMode === "artists") {
+                            setSelectedFilter({ type: "artist", value: item.artist });
+                            setArtistViewMode("albums");
+                          } else if (browseMode === "albums") {
+                            setSelectedFilter({ type: "album", value: { album: item.album, artist: item.artist } });
+                            setArtistViewMode("tracks");
+                          } else if (browseMode === "genres") {
+                            setSelectedFilter({ type: "genre", value: item.genre });
+                            setArtistViewMode("tracks");
+                          } else {
+                            setSelectedFilter({ type: "year", value: item.year });
+                            setArtistViewMode("tracks");
+                          }
+                        }}
+                      >
+                        <span>{label}</span>
+                        <span className="browse-meta">{formatCount(item.trackCount)} tracks</span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+            {showArtistJumpPicker && (
+              <nav className="artist-jump-picker" aria-label="Jump to artist letter" ref={artistJumpPickerRef}>
+                {ALPHABET.map(letter => (
+                  <button
+                    key={letter}
+                    type="button"
+                    className="artist-jump-button"
+                    onClick={() => jumpToArtistLetter(letter)}
+                    onKeyDown={handleArtistJumpPickerKeyDown}
+                    disabled={!artistJumpTargets[letter]}
+                    aria-label={`Jump to artists starting with ${letter}`}
+                  >
+                    {letter}
+                  </button>
+                ))}
+              </nav>
+            )}
           </div>
 
           <div className="track-panel">
