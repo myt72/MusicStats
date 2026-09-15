@@ -4,6 +4,7 @@ import { API_BASE_URL } from "./config";
 const numberFormatter = new Intl.NumberFormat();
 const PHONE_MEDIA_QUERY = "(max-width: 700px)";
 const DEFAULT_OUTPUTS_STORAGE_KEY = "musicstats.defaultOutputs";
+const BUILT_IN_OUTPUT_ID = "";
 
 function formatCount(value) {
   return numberFormatter.format(Math.round(Number(value) || 0));
@@ -132,6 +133,9 @@ function App() {
   const [availableOutputs, setAvailableOutputs] = useState([]);
   const outputSelectionSupported =
     typeof HTMLMediaElement !== "undefined" && typeof HTMLMediaElement.prototype.setSinkId === "function";
+  const remotePlaybackPromptSupported =
+    typeof HTMLMediaElement !== "undefined" &&
+    typeof HTMLMediaElement.prototype.remote?.prompt === "function";
   const [defaultOutputIds, setDefaultOutputIds] = useState(() => {
     if (typeof window === "undefined") {
       return [];
@@ -145,6 +149,7 @@ function App() {
     }
   });
   const [outputError, setOutputError] = useState(null);
+  const [remotePlaybackError, setRemotePlaybackError] = useState(null);
   const [uiMode, setUiMode] = useState(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
       return "default";
@@ -240,13 +245,34 @@ function App() {
     };
   }, [outputSelectionSupported]);
 
+  useEffect(() => {
+    playbackQueueRef.current = playbackQueue;
+  }, [playbackQueue]);
+
+  useEffect(() => {
+    libraryTracksRef.current = library.tracks;
+  }, [library.tracks]);
+
+  const browserOutputTargets = useMemo(() => {
+    if (!outputSelectionSupported) {
+      return [];
+    }
+
+    const hasBuiltInTarget = availableOutputs.some(output => output.id === BUILT_IN_OUTPUT_ID);
+    if (hasBuiltInTarget) {
+      return availableOutputs;
+    }
+
+    return [{ id: BUILT_IN_OUTPUT_ID, label: "This device (built-in/default speaker)" }, ...availableOutputs];
+  }, [availableOutputs, outputSelectionSupported]);
+
   function applyPreferredOutput(audioNode) {
     if (!audioNode || !outputSelectionSupported) {
       return;
     }
 
     const selectedOutput = defaultOutputIds.find(outputId =>
-      availableOutputs.some(output => output.id === outputId)
+      browserOutputTargets.some(output => output.id === outputId)
     );
 
     audioNode
@@ -268,7 +294,7 @@ function App() {
     }
 
     applyPreferredOutput(audioRef.current);
-  }, [selectedTrack, availableOutputs, defaultOutputIds, outputSelectionSupported]);
+  }, [selectedTrack, browserOutputTargets, defaultOutputIds, outputSelectionSupported]);
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
@@ -334,17 +360,29 @@ function App() {
         return current;
       }
 
-      useEffect(() => {
-        playbackQueueRef.current = playbackQueue;
-      }, [playbackQueue]);
-
-      useEffect(() => {
-        libraryTracksRef.current = library.tracks;
-      }, [library.tracks]);
-
       const nextOrder = [...current];
       [nextOrder[fromIndex], nextOrder[toIndex]] = [nextOrder[toIndex], nextOrder[fromIndex]];
       return nextOrder;
+    });
+  }
+
+  function openPlaybackTargetPicker() {
+    setRemotePlaybackError(null);
+    const activeAudioNode = audioRef.current;
+    if (!activeAudioNode) {
+      setRemotePlaybackError("Start playback to open the player target picker.");
+      return;
+    }
+
+    const prompt = activeAudioNode.remote?.prompt;
+    if (typeof prompt !== "function") {
+      setRemotePlaybackError("This browser does not expose a programmable cast/output picker.");
+      return;
+    }
+
+    prompt.call(activeAudioNode.remote).catch(err => {
+      const message = err?.name === "NotAllowedError" ? "Output picker was dismissed." : err?.message;
+      setRemotePlaybackError(message || "Unable to open the playback target picker.");
     });
   }
 
@@ -564,15 +602,25 @@ function App() {
           )}
         </div>
         <div className="output-panel">
-          <h3>Preferred output targets</h3>
+          <h3>Output target preferences</h3>
           <p className="panel-note">
-            Selected outputs are saved as an ordered fallback list and auto-applied when playback starts.
+            The player cast/output menu can show network targets that browsers do not expose for pre-selection.
           </p>
+          {remotePlaybackPromptSupported && (
+            <p className="panel-note">
+              <button type="button" className="tab" onClick={openPlaybackTargetPicker}>
+                Open player target picker
+              </button>
+            </p>
+          )}
           {!outputSelectionSupported ? (
-            <p className="panel-note">This browser does not support selecting an audio output target.</p>
-          ) : availableOutputs.length ? (
+            <p className="panel-note">
+              This browser does not support pre-selecting browser audio outputs. Use the player cast/output control
+              during playback.
+            </p>
+          ) : browserOutputTargets.length ? (
             <ul className="output-list">
-              {availableOutputs.map(output => (
+              {browserOutputTargets.map(output => (
                 <li key={output.id}>
                   <label>
                     <input
@@ -612,12 +660,16 @@ function App() {
               ))}
             </ul>
           ) : (
-            <p className="panel-note">No selectable browser outputs were detected.</p>
+            <p className="panel-note">
+              No browser-managed outputs were detected. Available cast/network targets can still appear in the player
+              control while a song is playing.
+            </p>
           )}
           {defaultOutputIds.length > 0 && (
-            <p className="panel-note">Playback uses the first available output in this order.</p>
+            <p className="panel-note">When supported, playback uses the first available browser output in this order.</p>
           )}
           {outputError && <p className="panel-note">{outputError}</p>}
+          {remotePlaybackError && <p className="panel-note">{remotePlaybackError}</p>}
         </div>
 
         <div className="browser-layout">
