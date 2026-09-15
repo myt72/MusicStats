@@ -2,6 +2,10 @@ const DEFAULT_EXCLUSIONS = {
   topArtists: ["Various Artists"],
   topAlbums: ["Greatest Hits"]
 };
+const DEFAULT_BROWSE_EXCLUSIONS = {
+  browseArtists: ["_mp3"],
+  browseAlbums: ["_incoming"]
+};
 
 function toNonEmptyString(value, fallback) {
   if (typeof value !== "string") {
@@ -36,6 +40,14 @@ export function computeStats(tracks, config = {}) {
   const exclusions = config.exclusions || {};
   const excludedArtists = normalizeExclusionSet(exclusions.topArtists, DEFAULT_EXCLUSIONS.topArtists);
   const excludedAlbums = normalizeExclusionSet(exclusions.topAlbums, DEFAULT_EXCLUSIONS.topAlbums);
+  const excludedBrowseArtists = normalizeExclusionSet(
+    exclusions.browseArtists,
+    DEFAULT_BROWSE_EXCLUSIONS.browseArtists
+  );
+  const excludedBrowseAlbums = normalizeExclusionSet(
+    exclusions.browseAlbums,
+    DEFAULT_BROWSE_EXCLUSIONS.browseAlbums
+  );
 
   const normalizedTracks = tracks.map((track, index) => {
     const artist = toNonEmptyString(track.artist || track.artistFolder, "Unknown Artist");
@@ -47,6 +59,7 @@ export function computeStats(tracks, config = {}) {
     const durationSeconds = Number(track.duration) || 0;
     const bitrate = Number(track.bitrate) || 0;
     const trackNumber = toNumberOrNull(track.trackNumber);
+    const discNumber = toNumberOrNull(track.discNumber);
     const albumKey = `${artist}\u0000${album}`;
 
     return {
@@ -59,6 +72,7 @@ export function computeStats(tracks, config = {}) {
       durationSeconds,
       bitrate,
       trackNumber,
+      discNumber,
       file: track.file,
       albumKey
     };
@@ -131,6 +145,10 @@ export function computeStats(tracks, config = {}) {
 
     return left.artist.localeCompare(right.artist);
   });
+  const visibleBrowseArtists = browseArtists.filter(
+    artist => !excludedBrowseArtists.has(artist.artist.toLowerCase())
+  );
+  const visibleBrowseAlbums = browseAlbums.filter(album => !excludedBrowseAlbums.has(album.album.toLowerCase()));
 
   const genreStats = Array.from(genreMap.values());
   const yearStats = Array.from(yearMap.values()).sort((left, right) => left.year - right.year);
@@ -150,6 +168,10 @@ export function computeStats(tracks, config = {}) {
       const albumComparison = left.album.localeCompare(right.album);
       if (albumComparison !== 0) {
         return albumComparison;
+      }
+
+      if ((left.discNumber || 0) !== (right.discNumber || 0)) {
+        return (left.discNumber || 0) - (right.discNumber || 0);
       }
 
       if ((left.trackNumber || 0) !== (right.trackNumber || 0)) {
@@ -181,8 +203,8 @@ export function computeStats(tracks, config = {}) {
     genres: sortByTrackCountDesc(genreStats, "genre"),
     years: yearStats,
     browse: {
-      artists: browseArtists,
-      albums: browseAlbums,
+      artists: visibleBrowseArtists,
+      albums: visibleBrowseAlbums,
       genres: [...genreStats].sort((left, right) => left.genre.localeCompare(right.genre)),
       years: yearStats
     },

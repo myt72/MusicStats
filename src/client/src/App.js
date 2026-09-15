@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 
 const DEFAULT_API_PORT = "3001";
@@ -10,6 +10,8 @@ const API_ORIGIN =
     : window.location.origin);
 const API_BASE_URL = `${API_ORIGIN.replace(/\/$/, "")}/api`;
 const numberFormatter = new Intl.NumberFormat();
+const PHONE_MEDIA_QUERY = "(max-width: 700px)";
+const DEFAULT_OUTPUTS_STORAGE_KEY = "musicstats.defaultOutputs";
 
 function formatCount(value) {
   return numberFormatter.format(Math.round(Number(value) || 0));
@@ -51,6 +53,20 @@ function getBrowseValue(item, browseMode) {
   if (browseMode === "albums") return `${item.album} ${item.artist}`;
   if (browseMode === "genres") return item.genre;
   return String(item.year);
+}
+
+function sortAlbumTracks(tracks) {
+  return [...tracks].sort((left, right) => {
+    if ((left.discNumber || 0) !== (right.discNumber || 0)) {
+      return (left.discNumber || 0) - (right.discNumber || 0);
+    }
+
+    if ((left.trackNumber || 0) !== (right.trackNumber || 0)) {
+      return (left.trackNumber || 0) - (right.trackNumber || 0);
+    }
+
+    return left.title.localeCompare(right.title);
+  });
 }
 
 function AlbumArt({ trackId, size = "medium" }) {
@@ -104,6 +120,7 @@ function ChartCard({ title, items, labelForItem }) {
 }
 
 function App() {
+  const audioRef = useRef(null);
   const [stats, setStats] = useState(null);
   const [library, setLibrary] = useState({
     browse: { artists: [], albums: [], genres: [], years: [] },
@@ -114,7 +131,32 @@ function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [browseMode, setBrowseMode] = useState("artists");
   const [selectedFilter, setSelectedFilter] = useState(null);
+  const [artistViewMode, setArtistViewMode] = useState("albums");
   const [selectedTrack, setSelectedTrack] = useState(null);
+  const [playbackQueue, setPlaybackQueue] = useState([]);
+  const [queueIndex, setQueueIndex] = useState(-1);
+  const [availableOutputs, setAvailableOutputs] = useState([]);
+  const [defaultOutputIds, setDefaultOutputIds] = useState(() => {
+    if (typeof window === "undefined") {
+      return [];
+    }
+
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem(DEFAULT_OUTPUTS_STORAGE_KEY) || "[]");
+      return Array.isArray(parsed) ? parsed.filter(value => typeof value === "string") : [];
+    } catch {
+      return [];
+    }
+  });
+  const [outputError, setOutputError] = useState(null);
+  const [uiMode, setUiMode] = useState(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return "default";
+    }
+
+    return window.matchMedia(PHONE_MEDIA_QUERY).matches ? "phone" : "default";
+  });
+  const [showPhoneStats, setShowPhoneStats] = useState(false);
 
   async function loadData() {
     try {
@@ -160,6 +202,113 @@ function App() {
     loadData();
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.localStorage === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(DEFAULT_OUTPUTS_STORAGE_KEY, JSON.stringify(defaultOutputIds));
+  }, [defaultOutputIds]);
+
+  useEffect(() => {
+    if (!navigator.mediaDevices?.enumerateDevices) {
+      return;
+    }
+
+    let cancelled = false;
+    const refreshOutputs = async () => {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        if (!cancelled) {
+          setAvailableOutputs(
+            devices.filter(device => device.kind === "audiooutput").map(device => ({
+              id: device.deviceId,
+              label: device.label || "Speaker output"
+            }))
+          );
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setOutputError(err.message || "Unable to list output devices.");
+        }
+      }
+    };
+
+    refreshOutputs();
+    navigator.mediaDevices.addEventListener?.("devicechange", refreshOutputs);
+
+    return () => {
+      cancelled = true;
+      navigator.mediaDevices.removeEventListener?.("devicechange", refreshOutputs);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedTrack || !audioRef.current || typeof audioRef.current.setSinkId !== "function") {
+      return;
+    }
+
+    const selectedOutput = defaultOutputIds.find(outputId =>
+      availableOutputs.some(output => output.id === outputId)
+    );
+
+    audioRef.current
+      .setSinkId(selectedOutput || "")
+      .then(() => setOutputError(null))
+      .catch(err => setOutputError(err.message || "Unable to set output device."));
+  }, [selectedTrack, availableOutputs, defaultOutputIds]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia(PHONE_MEDIA_QUERY);
+    const syncMode = event => {
+      if (event.matches) {
+        setUiMode("phone");
+      }
+    };
+
+    mediaQuery.addEventListener?.("change", syncMode);
+    return () => mediaQuery.removeEventListener?.("change", syncMode);
+  }, []);
+
+  function playTrack(track) {
+    setSelectedTrack(track);
+    setPlaybackQueue([]);
+    setQueueIndex(-1);
+  }
+
+  function playAlbumTracks(tracks) {
+    const orderedTracks = sortAlbumTracks(tracks);
+    if (!orderedTracks.length) {
+      return;
+    }
+
+    setPlaybackQueue(orderedTracks.map(track => track.id));
+    setQueueIndex(0);
+    setSelectedTrack(orderedTracks[0]);
+  }
+
+  function handleAudioEnded() {
+    if (queueIndex < 0 || queueIndex + 1 >= playbackQueue.length) {
+      setPlaybackQueue([]);
+      setQueueIndex(-1);
+      return;
+    }
+
+    const nextTrack = library.tracks.find(track => track.id === playbackQueue[queueIndex + 1]);
+    if (!nextTrack) {
+      setPlaybackQueue([]);
+      setQueueIndex(-1);
+      return;
+    }
+
+    setQueueIndex(currentIndex => currentIndex + 1);
+    setSelectedTrack(nextTrack);
+  }
+
   const browseItems = useMemo(() => {
     return library.browse[browseMode] || [];
   }, [browseMode, library]);
@@ -204,6 +353,39 @@ function App() {
 
     return nextTracks.slice(0, 80);
   }, [library.tracks, selectedFilter, browseQuery]);
+  const isPhoneMode = uiMode === "phone";
+  const selectedArtistAlbums = useMemo(() => {
+    if (selectedFilter?.type !== "artist") {
+      return [];
+    }
+
+    const artistTracks = library.tracks.filter(track => track.artist === selectedFilter.value);
+    const albumMap = new Map();
+    for (const track of artistTracks) {
+      const albumKey = track.album;
+      if (!albumMap.has(albumKey)) {
+        albumMap.set(albumKey, {
+          album: track.album,
+          artist: track.artist,
+          trackCount: 0,
+          artTrackId: track.albumArtTrackId || track.id
+        });
+      }
+
+      albumMap.get(albumKey).trackCount += 1;
+    }
+
+    return [...albumMap.values()].sort((left, right) => left.album.localeCompare(right.album));
+  }, [library.tracks, selectedFilter]);
+  const selectedAlbumTracks = useMemo(() => {
+    if (selectedFilter?.type !== "album") {
+      return [];
+    }
+
+    return library.tracks.filter(
+      track => track.album === selectedFilter.value.album && track.artist === selectedFilter.value.artist
+    );
+  }, [library.tracks, selectedFilter]);
 
   const chartData = useMemo(() => {
     if (!stats) {
@@ -240,44 +422,58 @@ function App() {
   const { totals, artists, albums, genres, years } = stats;
 
   return (
-    <div className="app">
+    <div className={isPhoneMode ? "app phone-mode" : "app"}>
       <header className="header">
         <div>
           <h1>Music Library Stats</h1>
           <p className="subhead">Browse, search, chart, and play tracks from the scanned library cache.</p>
         </div>
-        <button onClick={rescan}>Refresh from directory</button>
+        <div className="header-actions">
+          <button onClick={rescan}>Refresh from directory</button>
+          <button onClick={() => setUiMode(current => (current === "phone" ? "default" : "phone"))}>
+            {isPhoneMode ? "Desktop view" : "Phone view"}
+          </button>
+          {isPhoneMode && (
+            <button onClick={() => setShowPhoneStats(current => !current)}>
+              {showPhoneStats ? "Hide stats" : "Show stats"}
+            </button>
+          )}
+        </div>
       </header>
 
-      <section className="cards">
-        <div className="card">
-          <h2>Total Tracks</h2>
-          <p>{formatCount(totals.tracks)}</p>
-        </div>
-        <div className="card">
-          <h2>Total Hours</h2>
-          <p>{formatHours(totals.durationHours)}</p>
-        </div>
-        <div className="card">
-          <h2>Total Artists</h2>
-          <p>{formatCount(totals.artists)}</p>
-        </div>
-        <div className="card">
-          <h2>Total Albums</h2>
-          <p>{formatCount(totals.albums)}</p>
-        </div>
-      </section>
+      {(!isPhoneMode || showPhoneStats) && (
+        <>
+          <section className="cards">
+            <div className="card">
+              <h2>Total Tracks</h2>
+              <p>{formatCount(totals.tracks)}</p>
+            </div>
+            <div className="card">
+              <h2>Total Hours</h2>
+              <p>{formatHours(totals.durationHours)}</p>
+            </div>
+            <div className="card">
+              <h2>Total Artists</h2>
+              <p>{formatCount(totals.artists)}</p>
+            </div>
+            <div className="card">
+              <h2>Total Albums</h2>
+              <p>{formatCount(totals.albums)}</p>
+            </div>
+          </section>
 
-      <section className="grid charts-grid">
-        <ChartCard title="Top Artists" items={chartData.artists} labelForItem={item => item.artist} />
-        <ChartCard
-          title="Top Albums"
-          items={chartData.albums}
-          labelForItem={item => `${item.album} (${item.artist})`}
-        />
-        <ChartCard title="Genres" items={chartData.genres} labelForItem={item => item.genre} />
-        <ChartCard title="Years" items={chartData.years} labelForItem={item => String(item.year)} />
-      </section>
+          <section className="grid charts-grid">
+            <ChartCard title="Top Artists" items={chartData.artists} labelForItem={item => item.artist} />
+            <ChartCard
+              title="Top Albums"
+              items={chartData.albums}
+              labelForItem={item => `${item.album} (${item.artist})`}
+            />
+            <ChartCard title="Genres" items={chartData.genres} labelForItem={item => item.genre} />
+            <ChartCard title="Years" items={chartData.years} labelForItem={item => String(item.year)} />
+          </section>
+        </>
+      )}
 
       <section className="browser panel">
         <div className="browser-header">
@@ -320,6 +516,40 @@ function App() {
             </button>
           )}
         </div>
+        <div className="output-panel">
+          <h3>Default output targets</h3>
+          <p className="panel-note">
+            Selected outputs are remembered for this browser and auto-applied when playback starts.
+          </p>
+          {availableOutputs.length ? (
+            <ul className="output-list">
+              {availableOutputs.map(output => (
+                <li key={output.id}>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={defaultOutputIds.includes(output.id)}
+                      onChange={() =>
+                        setDefaultOutputIds(current =>
+                          current.includes(output.id)
+                            ? current.filter(id => id !== output.id)
+                            : [...current, output.id]
+                        )
+                      }
+                    />
+                    <span>{output.label}</span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="panel-note">No selectable browser outputs were detected.</p>
+          )}
+          {defaultOutputIds.length > 1 && (
+            <p className="panel-note">Multiple targets are saved. Browser playback will use the first available target.</p>
+          )}
+          {outputError && <p className="panel-note">{outputError}</p>}
+        </div>
 
         <div className="browser-layout">
           <div className="browser-list">
@@ -344,12 +574,16 @@ function App() {
                       onClick={() => {
                         if (browseMode === "artists") {
                           setSelectedFilter({ type: "artist", value: item.artist });
+                          setArtistViewMode("albums");
                         } else if (browseMode === "albums") {
                           setSelectedFilter({ type: "album", value: { album: item.album, artist: item.artist } });
+                          setArtistViewMode("tracks");
                         } else if (browseMode === "genres") {
                           setSelectedFilter({ type: "genre", value: item.genre });
+                          setArtistViewMode("tracks");
                         } else {
                           setSelectedFilter({ type: "year", value: item.year });
+                          setArtistViewMode("tracks");
                         }
                       }}
                     >
@@ -367,6 +601,27 @@ function App() {
               <div>
                 <h3>Tracks</h3>
                 <p className="panel-note">Showing {formatCount(filteredTracks.length)} tracks from the current browse/search view.</p>
+                {selectedFilter?.type === "artist" && (
+                  <div className="browser-tabs browser-subtabs">
+                    <button
+                      className={artistViewMode === "albums" ? "tab active" : "tab"}
+                      onClick={() => setArtistViewMode("albums")}
+                    >
+                      Albums
+                    </button>
+                    <button
+                      className={artistViewMode === "tracks" ? "tab active" : "tab"}
+                      onClick={() => setArtistViewMode("tracks")}
+                    >
+                      Tracks
+                    </button>
+                  </div>
+                )}
+                {selectedFilter?.type === "album" && (
+                  <button className="tab" onClick={() => playAlbumTracks(selectedAlbumTracks)}>
+                    Play album ({formatCount(selectedAlbumTracks.length)})
+                  </button>
+                )}
               </div>
               {selectedTrack && (
                 <div className="now-playing">
@@ -383,9 +638,11 @@ function App() {
             {selectedTrack ? (
               <audio
                 key={selectedTrack.id}
+                ref={audioRef}
                 className="audio-player"
                 controls
                 autoPlay
+                onEnded={handleAudioEnded}
                 src={`${API_BASE_URL}/tracks/${selectedTrack.id}/stream`}
               />
             ) : (
@@ -393,59 +650,88 @@ function App() {
             )}
 
             <div className="track-list-grid">
-              <div className="track-list-header" aria-hidden="true">
-                <span aria-hidden />
-                <span>Track</span>
-                <span>Artist</span>
-                <span className="track-album-header">Album</span>
-                <span>Length</span>
-              </div>
-              <ul className="track-list">
-                {filteredTracks.map(track => (
-                  <li key={track.id} className={track.id === selectedTrack?.id ? "track-row active" : "track-row"}>
-                    <button
-                      type="button"
-                      className="track-row-button"
-                      onClick={() => setSelectedTrack(track)}
-                      title={`Play ${track.title}`}
-                      aria-label={`Select ${track.title} by ${track.artist}`}
-                    >
-                      <span>
-                        <AlbumArt trackId={track.albumArtTrackId || track.id} size="small" />
-                      </span>
-                      <span className="track-cell track-title" title={track.title}>
-                        {track.title}
-                      </span>
-                      <span className="track-cell" title={track.artist}>
-                        {track.artist}
-                      </span>
-                      <span className="track-cell track-album" title={track.album}>
-                        {track.album}
-                      </span>
-                      <span className="track-cell track-duration">
-                        {formatDuration(track.durationSeconds)}
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      className="track-play-button"
-                      onClick={event => {
-                        event.stopPropagation();
-                        setSelectedTrack(track);
-                      }}
-                      aria-label={`Play ${track.title} by ${track.artist}`}
-                    >
-                      ▶
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              {selectedFilter?.type === "artist" && artistViewMode === "albums" ? (
+                <ul className="artist-album-list">
+                  {selectedArtistAlbums.map(album => {
+                    const tracksForAlbum = library.tracks.filter(
+                      track => track.artist === album.artist && track.album === album.album
+                    );
+                    return (
+                      <li key={`${album.artist}-${album.album}`} className="artist-album-row">
+                        <button
+                          className="browse-item"
+                          onClick={() => {
+                            setSelectedFilter({ type: "album", value: { album: album.album, artist: album.artist } });
+                            setArtistViewMode("tracks");
+                          }}
+                        >
+                          <span>{album.album}</span>
+                          <span className="browse-meta">{formatCount(album.trackCount)} tracks</span>
+                        </button>
+                        <button className="track-play-button" onClick={() => playAlbumTracks(tracksForAlbum)}>
+                          ▶
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <>
+                  <div className="track-list-header" aria-hidden="true">
+                    <span aria-hidden />
+                    <span>Track</span>
+                    <span>Artist</span>
+                    <span className="track-album-header">Album</span>
+                    <span>Length</span>
+                  </div>
+                  <ul className="track-list">
+                    {filteredTracks.map(track => (
+                      <li key={track.id} className={track.id === selectedTrack?.id ? "track-row active" : "track-row"}>
+                        <button
+                          type="button"
+                          className="track-row-button"
+                          onClick={() => playTrack(track)}
+                          title={`Play ${track.title}`}
+                          aria-label={`Select ${track.title} by ${track.artist}`}
+                        >
+                          <span>
+                            <AlbumArt trackId={track.albumArtTrackId || track.id} size="small" />
+                          </span>
+                          <span className="track-cell track-title" title={track.title}>
+                            {track.title}
+                          </span>
+                          <span className="track-cell" title={track.artist}>
+                            {track.artist}
+                          </span>
+                          <span className="track-cell track-album" title={track.album}>
+                            {track.album}
+                          </span>
+                          <span className="track-cell track-duration">
+                            {formatDuration(track.durationSeconds)}
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          className="track-play-button"
+                          onClick={event => {
+                            event.stopPropagation();
+                            playTrack(track);
+                          }}
+                          aria-label={`Play ${track.title} by ${track.artist}`}
+                        >
+                          ▶
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
             </div>
           </div>
         </div>
       </section>
 
-      <section className="grid">
+      {(!isPhoneMode || showPhoneStats) && <section className="grid">
         <div className="panel">
           <h2>Top Artists</h2>
           <ul>
@@ -497,7 +783,7 @@ function App() {
             ))}
           </ul>
         </div>
-      </section>
+      </section>}
     </div>
   );
 }
