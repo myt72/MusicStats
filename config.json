@@ -2,7 +2,6 @@
   "musicRoot": "P:/Multimedia/Music/Artists",
   "cacheFile": "./src/server/cache.json",
   "enableOnlineLookup": false,
-
   "specialFolders": [
     {
       "name": "Soundtracks",
@@ -14,5 +13,9 @@
       "path": "P:/Multimedia/Music/Artists/Various Artists",
       "mode": "compilation"
     }
-  ]
+  ],
+  "exclusions": {
+    "topArtists": ["Various Artists"],
+    "topAlbums": ["Greatest Hits"]
+  }
 }
