@@ -214,7 +214,6 @@ function App() {
 
   useEffect(() => {
     if (!outputSelectionSupported || !navigator.mediaDevices?.enumerateDevices) {
-      setOutputError("Output target selection is not supported by this browser.");
       return;
     }
 
@@ -246,8 +245,8 @@ function App() {
     };
   }, [outputSelectionSupported]);
 
-  useEffect(() => {
-    if (!selectedTrack || !audioRef.current || !outputSelectionSupported) {
+  function applyPreferredOutput(audioNode) {
+    if (!audioNode || !outputSelectionSupported) {
       return;
     }
 
@@ -255,10 +254,25 @@ function App() {
       availableOutputs.some(output => output.id === outputId)
     );
 
-    audioRef.current
+    audioNode
       .setSinkId(selectedOutput || "")
       .then(() => setOutputError(null))
       .catch(err => setOutputError(err.message || "Unable to set output device."));
+  }
+
+  function handleAudioRef(node) {
+    audioRef.current = node;
+    if (node) {
+      applyPreferredOutput(node);
+    }
+  }
+
+  useEffect(() => {
+    if (!selectedTrack || !audioRef.current) {
+      return;
+    }
+
+    applyPreferredOutput(audioRef.current);
   }, [selectedTrack, availableOutputs, defaultOutputIds, outputSelectionSupported]);
 
   useEffect(() => {
@@ -683,10 +697,11 @@ function App() {
             {selectedTrack ? (
               <audio
                 key={selectedTrack.id}
-                ref={audioRef}
+                ref={handleAudioRef}
                 className="audio-player"
                 controls
                 autoPlay
+                onLoadedMetadata={event => applyPreferredOutput(event.currentTarget)}
                 onEnded={handleAudioEnded}
                 src={`${API_BASE_URL}/tracks/${selectedTrack.id}/stream`}
               />
@@ -711,7 +726,12 @@ function App() {
                           <span>{album.album}</span>
                           <span className="browse-meta">{formatCount(album.trackCount)} tracks</span>
                         </button>
-                        <button type="button" className="track-play-button" onClick={() => playAlbumTracks(album.tracks)}>
+                        <button
+                          type="button"
+                          className="track-play-button"
+                          aria-label={`Play album ${album.album} by ${album.artist}`}
+                          onClick={() => playAlbumTracks(album.tracks)}
+                        >
                           ▶
                         </button>
                       </li>
