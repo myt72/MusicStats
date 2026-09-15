@@ -47,7 +47,7 @@ function App() {
   }, []);
 
   if (loading) {
-    return <div className="app">Loading…</div>;
+    return <div className="app">Loading...</div>;
   }
 
   if (error || !stats) {
@@ -89,7 +89,9 @@ function App() {
           <ul>
             {artists.slice(0, 15).map(a => (
               <li key={a.artist}>
-                <strong>{a.artist}</strong> — {a.trackCount} tracks, {a.albumCount} albums
+                <strong>{a.artist}</strong>
+                <span className="sep">â€¢</span>
+                {a.trackCount} tracks, {a.albumCount} albums
               </li>
             ))}
           </ul>
@@ -100,7 +102,9 @@ function App() {
           <ul>
             {albums.slice(0, 15).map(al => (
               <li key={al.album}>
-                <strong>{al.album}</strong> — {al.trackCount} tracks ({al.artist})
+                <strong>{al.album}</strong>
+                <span className="sep">â€¢</span>
+                {al.trackCount} tracks ({al.artist})
               </li>
             ))}
           </ul>
@@ -111,7 +115,9 @@ function App() {
           <ul>
             {genres.map(g => (
               <li key={g.genre}>
-                <strong>{g.genre}</strong> — {g.trackCount} tracks
+                <strong>{g.genre}</strong>
+                <span className="sep">â€¢</span>
+                {g.trackCount} tracks
               </li>
             ))}
           </ul>
@@ -122,7 +128,9 @@ function App() {
           <ul>
             {years.map(y => (
               <li key={y.year}>
-                <strong>{y.year}</strong> — {y.trackCount} tracks
+                <strong>{y.year}</strong>
+                <span className="sep">â€¢</span>
+                {y.trackCount} tracks
               </li>
             ))}
           </ul>
