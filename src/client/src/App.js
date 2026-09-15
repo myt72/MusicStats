@@ -166,6 +166,13 @@ function App() {
 
     return window.matchMedia(PHONE_MEDIA_QUERY).matches ? "phone" : "default";
   });
+  const [isPhoneViewport, setIsPhoneViewport] = useState(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return false;
+    }
+
+    return window.matchMedia(PHONE_MEDIA_QUERY).matches;
+  });
   const [showPhoneStats, setShowPhoneStats] = useState(false);
 
   async function loadData() {
@@ -324,7 +331,10 @@ function App() {
     }
 
     const mediaQuery = window.matchMedia(PHONE_MEDIA_QUERY);
-    const syncMode = event => setUiMode(event.matches ? "phone" : "default");
+    const syncMode = event => {
+      setIsPhoneViewport(event.matches);
+      setUiMode(event.matches ? "phone" : "default");
+    };
 
     if (typeof mediaQuery.addEventListener === "function") {
       mediaQuery.addEventListener("change", syncMode);
@@ -459,10 +469,6 @@ function App() {
     return nextTracks.slice(0, 80);
   }, [library.tracks, selectedFilter, browseQuery]);
   const isPhoneMode = uiMode === "phone";
-  const isPhoneViewport =
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia(PHONE_MEDIA_QUERY).matches;
   const showArtistJumpPicker = isPhoneViewport && browseMode === "artists" && filteredBrowseItems.length > 0;
   const artistJumpTargets = useMemo(() => {
     if (!showArtistJumpPicker) {
