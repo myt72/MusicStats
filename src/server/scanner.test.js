@@ -21,7 +21,11 @@ test("scanLibrary includes _mp3/_incoming tracks without using folder names as a
     fs.writeFileSync(path.join(specialMp3Path, "track-b.mp3"), "");
     fs.writeFileSync(path.join(specialIncomingPath, "track-c.mp3"), "");
 
-    const tracks = await scanLibrary({ musicRoot: tempRoot, specialFolders: [] });
+    const tracks = await scanLibrary({
+      musicRoot: tempRoot,
+      specialFolders: [],
+      specialRootFolders: ["_mp3", "_incoming"]
+    });
 
     assert.strictEqual(tracks.length, 3);
 

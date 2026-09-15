@@ -349,8 +349,8 @@
     grid-template-columns: 24px minmax(0, 1.7fr) minmax(0, 1fr) auto;
   }
 
-  .track-list-header span:nth-child(4),
-  .track-row-button .track-cell:nth-child(4) {
+  .track-album-header,
+  .track-album {
     display: none;
   }
 }
