@@ -213,7 +213,7 @@ function App() {
   }, [defaultOutputIds]);
 
   useEffect(() => {
-    if (!navigator.mediaDevices?.enumerateDevices) {
+    if (!outputSelectionSupported || !navigator.mediaDevices?.enumerateDevices) {
       setOutputError("Output target selection is not supported by this browser.");
       return;
     }
@@ -244,7 +244,7 @@ function App() {
       cancelled = true;
       navigator.mediaDevices.removeEventListener?.("devicechange", refreshOutputs);
     };
-  }, []);
+  }, [outputSelectionSupported]);
 
   useEffect(() => {
     if (!selectedTrack || !audioRef.current || !outputSelectionSupported) {
@@ -269,8 +269,13 @@ function App() {
     const mediaQuery = window.matchMedia(PHONE_MEDIA_QUERY);
     const syncMode = event => setUiMode(event.matches ? "phone" : "default");
 
-    mediaQuery.addEventListener?.("change", syncMode);
-    return () => mediaQuery.removeEventListener?.("change", syncMode);
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", syncMode);
+      return () => mediaQuery.removeEventListener("change", syncMode);
+    }
+
+    mediaQuery.addListener(syncMode);
+    return () => mediaQuery.removeListener(syncMode);
   }, []);
 
   function playTrack(track) {
@@ -297,20 +302,6 @@ function App() {
       return;
     }
 
-    function moveDefaultOutput(outputId, direction) {
-      setDefaultOutputIds(current => {
-        const fromIndex = current.indexOf(outputId);
-        const toIndex = fromIndex + direction;
-        if (fromIndex < 0 || toIndex < 0 || toIndex >= current.length) {
-          return current;
-        }
-
-        const nextOrder = [...current];
-        [nextOrder[fromIndex], nextOrder[toIndex]] = [nextOrder[toIndex], nextOrder[fromIndex]];
-        return nextOrder;
-      });
-    }
-
     const nextTrack = library.tracks.find(track => track.id === playbackQueue[queueIndex + 1]);
     if (!nextTrack) {
       setPlaybackQueue([]);
@@ -320,6 +311,20 @@ function App() {
 
     setQueueIndex(currentIndex => currentIndex + 1);
     setSelectedTrack(nextTrack);
+  }
+
+  function moveDefaultOutput(outputId, direction) {
+    setDefaultOutputIds(current => {
+      const fromIndex = current.indexOf(outputId);
+      const toIndex = fromIndex + direction;
+      if (fromIndex < 0 || toIndex < 0 || toIndex >= current.length) {
+        return current;
+      }
+
+      const nextOrder = [...current];
+      [nextOrder[fromIndex], nextOrder[toIndex]] = [nextOrder[toIndex], nextOrder[fromIndex]];
+      return nextOrder;
+    });
   }
 
   const browseItems = useMemo(() => {
@@ -381,14 +386,19 @@ function App() {
           album: track.album,
           artist: track.artist,
           trackCount: 0,
-          artTrackId: track.albumArtTrackId || track.id
+          artTrackId: track.albumArtTrackId || track.id,
+          tracks: []
         });
       }
 
-      albumMap.get(albumKey).trackCount += 1;
+      const albumEntry = albumMap.get(albumKey);
+      albumEntry.trackCount += 1;
+      albumEntry.tracks.push(track);
     }
 
-    return [...albumMap.values()].sort((left, right) => left.album.localeCompare(right.album));
+    return [...albumMap.values()]
+      .map(album => ({ ...album, tracks: sortAlbumTracks(album.tracks) }))
+      .sort((left, right) => left.album.localeCompare(right.album));
   }, [library.tracks, selectedFilter]);
   const selectedAlbumTracks = useMemo(() => {
     if (selectedFilter?.type !== "album") {
@@ -556,10 +566,20 @@ function App() {
                   </label>
                   {defaultOutputIds.includes(output.id) && (
                     <span className="output-actions">
-                      <button type="button" className="track-play-button" onClick={() => moveDefaultOutput(output.id, -1)}>
+                      <button
+                        type="button"
+                        className="track-play-button"
+                        aria-label={`Move ${output.label} up in output order`}
+                        onClick={() => moveDefaultOutput(output.id, -1)}
+                      >
                         ↑
                       </button>
-                      <button type="button" className="track-play-button" onClick={() => moveDefaultOutput(output.id, 1)}>
+                      <button
+                        type="button"
+                        className="track-play-button"
+                        aria-label={`Move ${output.label} down in output order`}
+                        onClick={() => moveDefaultOutput(output.id, 1)}
+                      >
                         ↓
                       </button>
                     </span>
@@ -678,12 +698,10 @@ function App() {
               {selectedFilter?.type === "artist" && artistViewMode === "albums" ? (
                 <ul className="artist-album-list">
                   {selectedArtistAlbums.map(album => {
-                    const tracksForAlbum = library.tracks.filter(
-                      track => track.artist === album.artist && track.album === album.album
-                    );
                     return (
                       <li key={`${album.artist}-${album.album}`} className="artist-album-row">
                         <button
+                          type="button"
                           className="browse-item"
                           onClick={() => {
                             setSelectedFilter({ type: "album", value: { album: album.album, artist: album.artist } });
@@ -693,7 +711,7 @@ function App() {
                           <span>{album.album}</span>
                           <span className="browse-meta">{formatCount(album.trackCount)} tracks</span>
                         </button>
-                        <button className="track-play-button" onClick={() => playAlbumTracks(tracksForAlbum)}>
+                        <button type="button" className="track-play-button" onClick={() => playAlbumTracks(album.tracks)}>
                           ▶
                         </button>
                       </li>
