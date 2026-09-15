@@ -170,6 +170,7 @@ function toLibraryTrack(track) {
     year: track.year,
     durationSeconds: track.durationSeconds,
     trackNumber: track.trackNumber,
+    discNumber: track.discNumber,
     albumArtTrackId: track.albumArtTrackId
   };
 }

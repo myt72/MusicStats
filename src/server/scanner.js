@@ -15,7 +15,8 @@ async function readMetadata(filePath) {
       year: meta.common.year || null,
       duration: meta.format.duration || 0,
       bitrate: meta.format.bitrate || 0,
-      trackNumber: meta.common.track?.no || null
+      trackNumber: meta.common.track?.no || null,
+      discNumber: meta.common.disk?.no || null
     };
   } catch {
     return {
@@ -26,7 +27,8 @@ async function readMetadata(filePath) {
       year: null,
       duration: 0,
       bitrate: 0,
-      trackNumber: null
+      trackNumber: null,
+      discNumber: null
     };
   }
 }
