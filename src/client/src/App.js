@@ -123,6 +123,8 @@ function App() {
   const audioRef = useRef(null);
   const browserListRef = useRef(null);
   const artistItemRefs = useRef(new Map());
+  const artistItemRefCallbacks = useRef(new Map());
+  const artistJumpPickerRef = useRef(null);
   const [stats, setStats] = useState(null);
   const [library, setLibrary] = useState({
     browse: { artists: [], albums: [], genres: [], years: [] },
@@ -466,16 +468,25 @@ function App() {
     const artistLabels = filteredBrowseItems
       .map(item => item.artist)
       .filter(artist => typeof artist === "string" && artist.trim());
+    const firstArtistsByLetter = {};
     const nextTargets = {};
 
-    for (const letter of ALPHABET) {
-      const targetArtist = artistLabels.find(artist => {
-        const artistKey = getArtistJumpKey(artist);
-        return artistKey && artistKey >= letter;
-      });
+    for (const artist of artistLabels) {
+      const artistKey = getArtistJumpKey(artist);
+      if (artistKey && !firstArtistsByLetter[artistKey]) {
+        firstArtistsByLetter[artistKey] = artist;
+      }
+    }
 
-      if (targetArtist) {
-        nextTargets[letter] = targetArtist;
+    let nearestArtist = null;
+    for (let index = ALPHABET.length - 1; index >= 0; index -= 1) {
+      const letter = ALPHABET[index];
+      if (firstArtistsByLetter[letter]) {
+        nearestArtist = firstArtistsByLetter[letter];
+      }
+
+      if (nearestArtist) {
+        nextTargets[letter] = nearestArtist;
       }
     }
 
@@ -541,6 +552,7 @@ function App() {
   useEffect(() => {
     if (browseMode !== "artists") {
       artistItemRefs.current.clear();
+      artistItemRefCallbacks.current.clear();
       return;
     }
 
@@ -550,15 +562,27 @@ function App() {
         artistItemRefs.current.delete(artist);
       }
     }
+
+    for (const artist of artistItemRefCallbacks.current.keys()) {
+      if (!visibleArtists.has(artist)) {
+        artistItemRefCallbacks.current.delete(artist);
+      }
+    }
   }, [browseMode, filteredBrowseItems]);
 
-  function setArtistItemRef(artist, node) {
-    if (node) {
-      artistItemRefs.current.set(artist, node);
-      return;
+  function getArtistItemRefCallback(artist) {
+    if (!artistItemRefCallbacks.current.has(artist)) {
+      artistItemRefCallbacks.current.set(artist, node => {
+        if (node) {
+          artistItemRefs.current.set(artist, node);
+          return;
+        }
+
+        artistItemRefs.current.delete(artist);
+      });
     }
 
-    artistItemRefs.current.delete(artist);
+    return artistItemRefCallbacks.current.get(artist);
   }
 
   function jumpToArtistLetter(letter) {
@@ -576,6 +600,40 @@ function App() {
     const scrollTop =
       targetNode.getBoundingClientRect().top - listNode.getBoundingClientRect().top + listNode.scrollTop;
     listNode.scrollTo({ top: Math.max(0, scrollTop - 8), behavior: "smooth" });
+  }
+
+  function handleArtistJumpPickerKeyDown(event) {
+    if (!artistJumpPickerRef.current) {
+      return;
+    }
+
+    const supportedKeys = ["ArrowUp", "ArrowDown", "Home", "End"];
+    if (!supportedKeys.includes(event.key)) {
+      return;
+    }
+
+    const enabledButtons = Array.from(artistJumpPickerRef.current.querySelectorAll("button:not(:disabled)"));
+    if (!enabledButtons.length) {
+      return;
+    }
+
+    event.preventDefault();
+    const currentIndex = enabledButtons.indexOf(event.currentTarget);
+    if (event.key === "Home") {
+      enabledButtons[0].focus();
+      return;
+    }
+
+    if (event.key === "End") {
+      enabledButtons[enabledButtons.length - 1].focus();
+      return;
+    }
+
+    const direction = event.key === "ArrowUp" ? -1 : 1;
+    const fallbackIndex = direction > 0 ? 0 : enabledButtons.length - 1;
+    const nextIndex = currentIndex >= 0 ? currentIndex + direction : fallbackIndex;
+    const boundedIndex = Math.min(enabledButtons.length - 1, Math.max(0, nextIndex));
+    enabledButtons[boundedIndex].focus();
   }
 
   if (loading) {
@@ -713,7 +771,7 @@ function App() {
                   return (
                     <li key={`${browseMode}-${label}`}>
                       <button
-                        ref={browseMode === "artists" ? node => setArtistItemRef(item.artist, node) : undefined}
+                        ref={browseMode === "artists" ? getArtistItemRefCallback(item.artist) : undefined}
                         className={isSelected ? "browse-item active" : "browse-item"}
                         onClick={() => {
                           if (browseMode === "artists") {
@@ -740,13 +798,14 @@ function App() {
               </ul>
             </div>
             {showArtistJumpPicker && (
-              <nav className="artist-jump-picker" aria-label="Jump to artist letter">
+              <nav className="artist-jump-picker" aria-label="Jump to artist letter" ref={artistJumpPickerRef}>
                 {ALPHABET.map(letter => (
                   <button
                     key={letter}
                     type="button"
                     className="artist-jump-button"
                     onClick={() => jumpToArtistLetter(letter)}
+                    onKeyDown={handleArtistJumpPickerKeyDown}
                     disabled={!artistJumpTargets[letter]}
                     aria-label={`Jump to artists starting with ${letter}`}
                   >
