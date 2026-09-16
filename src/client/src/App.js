@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AsyncSelect from "react-select/async";
+import { components as reactSelectComponents } from "react-select";
 import "./App.css";
 import { buildChartData } from "./chartData";
 import { API_BASE_URL } from "./config";
@@ -137,6 +138,20 @@ const mobileAsyncSelectStyles = {
     color: "#94a3b8"
   })
 };
+
+function createAsyncInputComponents(descriptionId) {
+  return {
+    Input: props => (
+      <reactSelectComponents.Input
+        {...props}
+        innerProps={{
+          ...props.innerProps,
+          "aria-describedby": descriptionId
+        }}
+      />
+    )
+  };
+}
 
 function AlbumArt({ trackId, size = "medium" }) {
   const [failed, setFailed] = useState(false);
@@ -583,7 +598,6 @@ function App() {
     return window.matchMedia(PHONE_MEDIA_QUERY).matches;
   });
   const [showPhoneStats, setShowPhoneStats] = useState(false);
-  const [phonePage, setPhonePage] = useState("browser");
   const [mobileArtistOption, setMobileArtistOption] = useState(null);
   const [mobileAlbumOption, setMobileAlbumOption] = useState(null);
   const [mobileSongOption, setMobileSongOption] = useState(null);
@@ -974,13 +988,25 @@ function App() {
 
     return buildMobileAlbumOptions(library.tracks, mobileArtistOption.value);
   }, [library.tracks, mobileArtistOption]);
-  const mobileSongOptions = useMemo(() => {
+  const mobileSelectedAlbumTracks = useMemo(() => {
     if (!mobileArtistOption?.value || !mobileAlbumOption?.value) {
       return [];
     }
 
-    return buildMobileSongOptions(library.tracks, mobileArtistOption.value, mobileAlbumOption.value);
+    return library.tracks.filter(
+      track => track.artist === mobileArtistOption.value && track.album === mobileAlbumOption.value
+    );
   }, [library.tracks, mobileArtistOption, mobileAlbumOption]);
+  const mobileSongOptions = useMemo(() => {
+    if (!mobileSelectedAlbumTracks.length || !mobileArtistOption?.value || !mobileAlbumOption?.value) {
+      return [];
+    }
+
+    return buildMobileSongOptions(mobileSelectedAlbumTracks, mobileArtistOption.value, mobileAlbumOption.value);
+  }, [mobileSelectedAlbumTracks, mobileArtistOption, mobileAlbumOption]);
+  const mobileArtistSelectComponents = useMemo(() => createAsyncInputComponents("mobile-artist-help"), []);
+  const mobileAlbumSelectComponents = useMemo(() => createAsyncInputComponents("mobile-album-help"), []);
+  const mobileSongSelectComponents = useMemo(() => createAsyncInputComponents("mobile-song-help"), []);
 
   const loadMobileArtistOptions = useCallback(
     inputValue =>
@@ -1042,10 +1068,7 @@ function App() {
       return;
     }
 
-    playQueueTracks(
-      library.tracks.filter(track => track.artist === mobileArtistOption.value && track.album === mobileAlbumOption.value),
-      option.value
-    );
+    playQueueTracks(mobileSelectedAlbumTracks, option.value);
   }
 
   function resetMobileBrowseSelection() {
@@ -1094,12 +1117,6 @@ function App() {
       setSelectedTrack(null);
     }
   }, [filteredTracks, selectedTrack]);
-
-  useEffect(() => {
-    if (isPhoneMode && phonePage !== "browser") {
-      setPhonePage("browser");
-    }
-  }, [isPhoneMode, phonePage]);
 
   useEffect(() => {
     if (browseMode !== "artists") {
@@ -1243,7 +1260,6 @@ function App() {
     setIpodAlbum(null);
     setIpodSelectionIndex(0);
     setSelectedFilter(null);
-    setPhonePage("browser");
   }
 
   if (loading) {
@@ -1325,46 +1341,14 @@ function App() {
         </>
       )}
 
-      {isPhoneMode && phonePage === "ipod" ? (
-        <>
-          <IpodBrowser
-            title={ipodView.title}
-            breadcrumb={ipodView.breadcrumb}
-            items={ipodView.items}
-            selectedIndex={ipodSelectionIndex}
-            onSelectIndex={setIpodSelectionIndex}
-            onActivate={activateIpodItem}
-            onBack={goBackIpodLevel}
-            onMove={moveIpodSelection}
-            onTransport={transportPlaybackQueue}
-            selectedTrack={selectedTrack}
-            canPlayPrevious={queueIndex > 0}
-            canPlayNext={queueIndex >= 0 && queueIndex < playbackQueue.length - 1}
-          />
-          <section className="panel ipod-player-panel">
-            {selectedTrack ? (
-              <audio
-                key={selectedTrack.id}
-                ref={handleAudioRef}
-                className="audio-player"
-                controls
-                autoPlay
-                onLoadedMetadata={event => applyPreferredOutput(event.currentTarget)}
-                onEnded={handleAudioEnded}
-                src={`${API_BASE_URL}/tracks/${selectedTrack.id}/stream`}
-              />
-            ) : (
-              <p className="panel-note">Select a song from the iPod dial browser to play it.</p>
-            )}
-          </section>
-        </>
-      ) : (
-        <section className="browser panel">
+      <section className="browser panel">
         <div className="browser-header">
           <div>
-            <h2>Music Browser</h2>
+            <h2>{isPhoneMode ? "Mobile Music Search" : "Music Browser"}</h2>
             <p className="panel-note">
-              Search across tracks, artists, albums, genres, and years, then play directly in the browser.
+              {isPhoneMode
+                ? "Find music quickly with a touch-first search flow and start playback from the song picker."
+                : "Search across tracks, artists, albums, genres, and years, then play directly in the browser."}
             </p>
           </div>
           {isPhoneMode ? (
@@ -1377,6 +1361,7 @@ function App() {
                 </label>
                 <AsyncSelect
                   inputId="mobile-artist-search"
+                  components={mobileArtistSelectComponents}
                   cacheOptions
                   defaultOptions={mobileArtistOptions.slice(0, MOBILE_ASYNC_OPTION_LIMIT)}
                   loadOptions={loadMobileArtistOptions}
@@ -1386,16 +1371,23 @@ function App() {
                   isClearable
                   styles={mobileAsyncSelectStyles}
                   loadingMessage={() => "Loading artists..."}
-                  noOptionsMessage={({ inputValue }) =>
-                    inputValue.trim() ? "No artists match that search." : "Type to search artists."
-                  }
+                  noOptionsMessage={({ inputValue }) => {
+                    const hasQuery = String(inputValue || "").trim().length > 0;
+                    return hasQuery ? "No artists match that search." : "No artists available.";
+                  }}
                 />
+                <p id="mobile-artist-help" className="panel-note">
+                  {mobileArtistOptions.length
+                    ? "Browse the default artist list or type to refine results."
+                    : "No artists are available in the scanned library yet."}
+                </p>
                 <label className="browser-search-label" htmlFor="mobile-album-search">
                   Album
                 </label>
                 <AsyncSelect
                   inputId="mobile-album-search"
-                  cacheOptions
+                  components={mobileAlbumSelectComponents}
+                  cacheOptions={false}
                   defaultOptions={mobileAlbumOptions.slice(0, MOBILE_ASYNC_OPTION_LIMIT)}
                   loadOptions={loadMobileAlbumOptions}
                   value={mobileAlbumOption}
@@ -1410,15 +1402,22 @@ function App() {
                       return "Select an artist first.";
                     }
 
-                    return inputValue.trim() ? "No albums match that search." : "Type to search albums.";
+                    const hasQuery = String(inputValue || "").trim().length > 0;
+                    return hasQuery ? "No albums match that search." : "No albums available for this artist.";
                   }}
                 />
+                <p id="mobile-album-help" className="panel-note">
+                  {mobileArtistOption
+                    ? "Select or search an album for the chosen artist."
+                    : "Choose an artist first to unlock album search."}
+                </p>
                 <label className="browser-search-label" htmlFor="mobile-song-search">
                   Song
                 </label>
                 <AsyncSelect
                   inputId="mobile-song-search"
-                  cacheOptions
+                  components={mobileSongSelectComponents}
+                  cacheOptions={false}
                   defaultOptions={mobileSongOptions.slice(0, MOBILE_ASYNC_OPTION_LIMIT)}
                   loadOptions={loadMobileSongOptions}
                   value={mobileSongOption}
@@ -1433,9 +1432,15 @@ function App() {
                       return "Select an album first.";
                     }
 
-                    return inputValue.trim() ? "No songs match that search." : "Type to search songs.";
+                    const hasQuery = String(inputValue || "").trim().length > 0;
+                    return hasQuery ? "No songs match that search." : "No songs available for this album.";
                   }}
                 />
+                <p id="mobile-song-help" className="panel-note">
+                  {mobileAlbumOption
+                    ? "Select a song to start playback immediately."
+                    : "Choose an album first to unlock song search."}
+                </p>
               </div>
               <div className="mobile-async-actions">
                 <button type="button" className="tab clear-tab" onClick={resetMobileBrowseSelection}>
@@ -1684,8 +1689,7 @@ function App() {
             </div>
           </div>
         </div>
-        </section>
-      )}
+      </section>
 
     </div>
   );
