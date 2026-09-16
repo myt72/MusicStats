@@ -177,7 +177,7 @@ function IpodBrowser({
             <span>{breadcrumb}</span>
             <strong>{title}</strong>
           </div>
-          <ul className="ipod-list" ref={listRef} role="listbox" aria-label={title}>
+          <ul className="ipod-list" ref={listRef} aria-label={title}>
             {items.map((item, index) => (
               <li key={item.id}>
                 <button
@@ -185,8 +185,7 @@ function IpodBrowser({
                   data-ipod-index={index}
                   className={index === selectedIndex ? "ipod-list-item active" : "ipod-list-item"}
                   tabIndex={index === selectedIndex ? 0 : -1}
-                  role="option"
-                  aria-selected={index === selectedIndex}
+                  aria-current={index === selectedIndex ? "true" : undefined}
                   onFocus={() => onSelectIndex(index)}
                   onKeyDown={event => {
                     if (event.key === "ArrowUp") {
@@ -767,15 +766,6 @@ function App() {
       return Math.min(currentIndex, ipodView.items.length - 1);
     });
   }, [ipodView.items.length]);
-
-  useEffect(() => {
-    if (!isPhoneMode) {
-      setPhonePage("browser");
-      setIpodArtist(null);
-      setIpodAlbum(null);
-      setIpodSelectionIndex(0);
-    }
-  }, [isPhoneMode]);
 
   useEffect(() => {
     if (selectedTrack && !filteredTracks.some(track => track.id === selectedTrack.id)) {
