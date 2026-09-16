@@ -1,6 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import { API_BASE_URL } from "./config";
+import {
+  buildIpodView,
+  getIpodSelectionPath,
+  getNextIpodSelectionIndex,
+  groupAlbumsForArtist,
+  sortAlbumTracks
+} from "./ipodBrowser";
 const numberFormatter = new Intl.NumberFormat();
 const PHONE_MEDIA_QUERY = "(max-width: 700px)";
 const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
@@ -52,45 +59,6 @@ function getBrowseValue(item, browseMode) {
   if (browseMode === "albums") return `${item.album} ${item.artist}`;
   if (browseMode === "genres") return item.genre;
   return String(item.year);
-}
-
-function sortAlbumTracks(tracks) {
-  return [...tracks].sort((left, right) => {
-    if ((left.discNumber || 0) !== (right.discNumber || 0)) {
-      return (left.discNumber || 0) - (right.discNumber || 0);
-    }
-
-    if ((left.trackNumber || 0) !== (right.trackNumber || 0)) {
-      return (left.trackNumber || 0) - (right.trackNumber || 0);
-    }
-
-    return left.title.localeCompare(right.title);
-  });
-}
-
-function groupAlbumsForArtist(tracks, artist) {
-  const artistTracks = tracks.filter(track => track.artist === artist);
-  const albumMap = new Map();
-  for (const track of artistTracks) {
-    const albumKey = track.album;
-    if (!albumMap.has(albumKey)) {
-      albumMap.set(albumKey, {
-        album: track.album,
-        artist: track.artist,
-        trackCount: 0,
-        artTrackId: track.albumArtTrackId || track.id,
-        tracks: []
-      });
-    }
-
-    const albumEntry = albumMap.get(albumKey);
-    albumEntry.trackCount += 1;
-    albumEntry.tracks.push(track);
-  }
-
-  return [...albumMap.values()]
-    .map(album => ({ ...album, tracks: sortAlbumTracks(album.tracks) }))
-    .sort((left, right) => left.album.localeCompare(right.album));
 }
 
 function getArtistJumpKey(value) {
@@ -183,7 +151,7 @@ function IpodBrowser({
           </div>
           <ul className="ipod-list" ref={listRef} aria-label={title}>
             {items.map((item, index) => (
-              <li key={item.id}>
+              <li key={item.key}>
                 <button
                   type="button"
                   data-ipod-index={index}
@@ -334,6 +302,7 @@ function App() {
   const [ipodArtist, setIpodArtist] = useState(null);
   const [ipodAlbum, setIpodAlbum] = useState(null);
   const [ipodSelectionIndex, setIpodSelectionIndex] = useState(0);
+  const previousIpodPathRef = useRef(getIpodSelectionPath(null, null));
 
   async function loadData() {
     try {
@@ -711,71 +680,35 @@ function App() {
       years: [...stats.years].sort((left, right) => right.trackCount - left.trackCount).slice(0, 10)
     };
   }, [stats]);
-  const ipodAlbums = useMemo(() => {
-    if (!ipodArtist) {
-      return [];
-    }
-
-    return groupAlbumsForArtist(library.tracks, ipodArtist);
-  }, [ipodArtist, library.tracks]);
-  const ipodSongs = useMemo(() => {
-    if (!ipodArtist || !ipodAlbum) {
-      return [];
-    }
-
-    return sortAlbumTracks(
-      library.tracks.filter(track => track.artist === ipodArtist && track.album === ipodAlbum)
-    );
-  }, [ipodAlbum, ipodArtist, library.tracks]);
   const ipodView = useMemo(() => {
-    if (!ipodArtist) {
-      return {
-        title: "Artists",
-        breadcrumb: "Music",
-        items: library.browse.artists.map(item => ({
-          id: `artist-${item.artist}`,
-          label: item.artist,
-          meta: formatUnitCount(item.albumCount || 0, "album")
-        }))
-      };
-    }
-
-    if (!ipodAlbum) {
-      return {
-        title: "Albums",
-        breadcrumb: ipodArtist,
-        items: ipodAlbums.map(item => ({
-          id: `album-${item.artist}-${item.album}`,
-          label: item.album,
-          meta: `${formatCount(item.trackCount)} tracks`
-        }))
-      };
-    }
-
+    const nextView = buildIpodView(library.browse.artists, library.tracks, ipodArtist, ipodAlbum);
     return {
-      title: "Songs",
-      breadcrumb: `${ipodArtist} • ${ipodAlbum}`,
-      items: ipodSongs.map((item, index) => ({
-        id: item.id,
-        label: `${formatCount(index + 1)}. ${item.title}`,
-        meta: formatDuration(item.durationSeconds)
+      ...nextView,
+      items: nextView.items.map((item, index) => ({
+        ...item,
+        label:
+          nextView.title === "Artists"
+            ? item.artist
+            : nextView.title === "Albums"
+              ? item.album
+              : `${formatCount(index + 1)}. ${item.title}`,
+        meta:
+          nextView.title === "Artists"
+            ? formatUnitCount(item.albumCount || 0, "album")
+            : nextView.title === "Albums"
+              ? formatUnitCount(item.trackCount || 0, "track")
+              : formatDuration(item.durationSeconds)
       }))
     };
-  }, [ipodAlbum, ipodAlbums, ipodArtist, ipodSongs, library.browse.artists]);
+  }, [ipodAlbum, ipodArtist, library.browse.artists, library.tracks]);
 
   useEffect(() => {
-    setIpodSelectionIndex(0);
-  }, [ipodAlbum, ipodArtist]);
-
-  useEffect(() => {
-    setIpodSelectionIndex(currentIndex => {
-      if (!ipodView.items.length) {
-        return 0;
-      }
-
-      return Math.min(currentIndex, ipodView.items.length - 1);
-    });
-  }, [ipodView.items.length]);
+    const nextPath = getIpodSelectionPath(ipodArtist, ipodAlbum);
+    setIpodSelectionIndex(currentIndex =>
+      getNextIpodSelectionIndex(currentIndex, ipodView.items.length, previousIpodPathRef.current, nextPath)
+    );
+    previousIpodPathRef.current = nextPath;
+  }, [ipodAlbum, ipodArtist, ipodView.items.length]);
 
   useEffect(() => {
     if (selectedTrack && !filteredTracks.some(track => track.id === selectedTrack.id)) {
@@ -895,39 +828,28 @@ function App() {
     }
 
     const targetIndex = Math.min(Math.max(index, 0), ipodView.items.length - 1);
+    const selectedIpodItem = ipodView.items[targetIndex];
+    if (!selectedIpodItem) {
+      return;
+    }
 
     if (!ipodArtist) {
-      const nextArtist = library.browse.artists[targetIndex];
-      if (!nextArtist) {
-        return;
-      }
-
-      setIpodArtist(nextArtist.artist);
+      setIpodArtist(selectedIpodItem.artist);
       setIpodAlbum(null);
       setIpodSelectionIndex(0);
-      showArtistFilter(nextArtist.artist);
+      showArtistFilter(selectedIpodItem.artist);
       return;
     }
 
     if (!ipodAlbum) {
-      const nextAlbum = ipodAlbums[targetIndex];
-      if (!nextAlbum) {
-        return;
-      }
-
-      setIpodAlbum(nextAlbum.album);
+      setIpodAlbum(selectedIpodItem.album);
       setIpodSelectionIndex(0);
-      showAlbumFilter(nextAlbum.album, nextAlbum.artist);
+      showAlbumFilter(selectedIpodItem.album, selectedIpodItem.artist);
       return;
     }
 
-    const nextTrack = ipodSongs[targetIndex];
-    if (!nextTrack) {
-      return;
-    }
-
-    showAlbumFilter(nextTrack.album, nextTrack.artist);
-    playTrack(nextTrack);
+    showAlbumFilter(selectedIpodItem.album, selectedIpodItem.artist);
+    playTrack(selectedIpodItem);
   }
 
   function goBackIpodLevel() {
