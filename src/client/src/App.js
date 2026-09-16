@@ -25,6 +25,7 @@ import {
   buildMobileSongOptions,
   loadMobileOptions
 } from "./mobileBrowse";
+import { getPreferredBrowserOutputId, prioritizeBrowserOutput } from "./outputDevices";
 const numberFormatter = new Intl.NumberFormat();
 const PHONE_MEDIA_QUERY = "(max-width: 700px)";
 const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
@@ -543,6 +544,80 @@ function IpodBrowser({
   );
 }
 
+function PlaybackOutputPanel({
+  compact = false,
+  selectId,
+  selectedTrack,
+  outputSelectionSupported,
+  remotePlaybackPromptSupported,
+  browserOutputTargets,
+  selectedOutputId,
+  onOutputChange,
+  onOpenPlaybackTargetPicker,
+  outputError,
+  remotePlaybackError
+}) {
+  const canRenderExplicitOutputPicker = outputSelectionSupported && browserOutputTargets.length > 0;
+  if (!canRenderExplicitOutputPicker && !remotePlaybackPromptSupported) {
+    return null;
+  }
+
+  const onlyBuiltInOutputAvailable =
+    canRenderExplicitOutputPicker &&
+    browserOutputTargets.length === 1 &&
+    browserOutputTargets[0]?.id === BUILT_IN_OUTPUT_ID;
+
+  return (
+    <section className={compact ? "output-panel output-panel-compact" : "output-panel"} aria-label="Playback output">
+      <div className="output-panel-header">
+        <div>
+          <h3>{compact ? "Playback output" : "Playback outputs"}</h3>
+          <p className="panel-note">
+            {canRenderExplicitOutputPicker
+              ? "Send browser playback to this device or another exposed speaker."
+              : "Use the browser playback picker when it is available for this device."}
+          </p>
+        </div>
+        {remotePlaybackPromptSupported && (
+          <button
+            type="button"
+            className="tab output-picker-button"
+            onClick={onOpenPlaybackTargetPicker}
+            disabled={!selectedTrack}
+          >
+            More devices
+          </button>
+        )}
+      </div>
+      {canRenderExplicitOutputPicker && (
+        <div className="output-select-row">
+          <label className="browser-search-label output-select-label" htmlFor={selectId}>
+            Playback device
+          </label>
+          <select id={selectId} className="output-select" value={selectedOutputId} onChange={onOutputChange}>
+            {browserOutputTargets.map(output => (
+              <option key={output.id || "built-in"} value={output.id}>
+                {output.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      {onlyBuiltInOutputAvailable && (
+        <p className="panel-note">No alternate browser outputs are currently exposed, so playback stays on this device.</p>
+      )}
+      {remotePlaybackPromptSupported && !selectedTrack && (
+        <p className="panel-note">Start a song to open the browser playback picker.</p>
+      )}
+      {(outputError || remotePlaybackError) && (
+        <p className="output-status" role="status">
+          {outputError || remotePlaybackError}
+        </p>
+      )}
+    </section>
+  );
+}
+
 function App() {
   const audioRef = useRef(null);
   const browserListRef = useRef(null);
@@ -731,12 +806,10 @@ function App() {
       return;
     }
 
-    const selectedOutput = defaultOutputIds.find(outputId =>
-      browserOutputTargets.some(output => output.id === outputId)
-    );
+    const selectedOutput = getPreferredBrowserOutputId(defaultOutputIds, browserOutputTargets, BUILT_IN_OUTPUT_ID);
 
     audioNode
-      .setSinkId(selectedOutput || "")
+      .setSinkId(selectedOutput)
       .then(() => setOutputError(null))
       .catch(err => setOutputError(err.message || "Unable to set output device."));
   }
@@ -1032,6 +1105,10 @@ function App() {
       }),
     [mobileSongOptions]
   );
+  const selectedBrowserOutputId = useMemo(
+    () => getPreferredBrowserOutputId(defaultOutputIds, browserOutputTargets, BUILT_IN_OUTPUT_ID),
+    [browserOutputTargets, defaultOutputIds]
+  );
 
   function handleMobileArtistChange(option) {
     setMobileArtistOption(option || null);
@@ -1077,6 +1154,12 @@ function App() {
     setMobileSongOption(null);
     setSearchQuery("");
     setSelectedFilter(null);
+  }
+
+  function handleBrowserOutputChange(event) {
+    const nextOutputId = event.target.value;
+    setOutputError(null);
+    setDefaultOutputIds(current => prioritizeBrowserOutput(nextOutputId, current, browserOutputTargets));
   }
 
   const chartData = useMemo(() => {
@@ -1355,6 +1438,19 @@ function App() {
             <div className="mobile-async-browser">
               <h3>Quick mobile browse</h3>
               <p className="panel-note">Search artists, then albums, then songs to play immediately.</p>
+              <PlaybackOutputPanel
+                compact
+                selectId="mobile-playback-output"
+                selectedTrack={selectedTrack}
+                outputSelectionSupported={outputSelectionSupported}
+                remotePlaybackPromptSupported={remotePlaybackPromptSupported}
+                browserOutputTargets={browserOutputTargets}
+                selectedOutputId={selectedBrowserOutputId}
+                onOutputChange={handleBrowserOutputChange}
+                onOpenPlaybackTargetPicker={openPlaybackTargetPicker}
+                outputError={outputError}
+                remotePlaybackError={remotePlaybackError}
+              />
               <div className="mobile-async-fields">
                 <label className="browser-search-label" htmlFor="mobile-artist-search">
                   Artist
@@ -1605,6 +1701,20 @@ function App() {
               />
             ) : (
               <p className="panel-note">Select a track to play.</p>
+            )}
+            {!isPhoneMode && (
+              <PlaybackOutputPanel
+                selectId="desktop-playback-output"
+                selectedTrack={selectedTrack}
+                outputSelectionSupported={outputSelectionSupported}
+                remotePlaybackPromptSupported={remotePlaybackPromptSupported}
+                browserOutputTargets={browserOutputTargets}
+                selectedOutputId={selectedBrowserOutputId}
+                onOutputChange={handleBrowserOutputChange}
+                onOpenPlaybackTargetPicker={openPlaybackTargetPicker}
+                outputError={outputError}
+                remotePlaybackError={remotePlaybackError}
+              />
             )}
 
             <div className="track-list-grid">
