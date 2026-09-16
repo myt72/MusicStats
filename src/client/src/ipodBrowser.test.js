@@ -1,13 +1,17 @@
 import assert from "assert";
 import test from "node:test";
 import {
+  buildIpodFastScrollTargets,
   buildIpodView,
   createPlaybackQueue,
+  getIpodFastScrollLetter,
   getIpodSelectionPath,
   getMovedIpodSelectionIndex,
+  getNearestIpodFastScrollTarget,
   getNextIpodSelectionIndex,
   getQueueTransportIndex,
   getWheelAngle,
+  getWheelAngleDelta,
   getWheelMove
 } from "./ipodBrowser.js";
 
@@ -85,9 +89,27 @@ test("wheel movement turns rotation into bounded list movement", () => {
     movement: 2,
     remainingAngle: 0
   });
+  assert.ok(getWheelAngleDelta(Math.PI * 0.95, -Math.PI * 0.95) > 0);
   assert.strictEqual(wrappedMove.movement, 1);
   assert.strictEqual(getMovedIpodSelectionIndex(1, 3, 5), 2);
   assert.strictEqual(getMovedIpodSelectionIndex(1, 3, -5), 0);
+});
+
+test("fast-scroll helpers map artist names and jump to nearest available letters", () => {
+  const fastTargets = buildIpodFastScrollTargets([
+    { artist: "!!!" },
+    { artist: "2Pac" },
+    { artist: "The Beatles" },
+    { artist: "Édith Piaf" },
+    { artist: "Kansas" }
+  ]);
+
+  assert.strictEqual(getIpodFastScrollLetter("  Édith Piaf"), "E");
+  assert.strictEqual(getIpodFastScrollLetter("3OH!3"), "O");
+  assert.strictEqual(getIpodFastScrollLetter("!!!"), "#");
+  assert.deepStrictEqual(getNearestIpodFastScrollTarget("K", fastTargets), { letter: "K", index: 4 });
+  assert.deepStrictEqual(getNearestIpodFastScrollTarget("J", fastTargets), { letter: "K", index: 4 });
+  assert.deepStrictEqual(getNearestIpodFastScrollTarget("Q", fastTargets), { letter: "P", index: 1 });
 });
 
 test("queue helpers keep song playback inside the selected album queue", () => {
