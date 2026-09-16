@@ -121,6 +121,21 @@ export function getWheelAngle(clientX, clientY, rect) {
   return Math.atan2(clientY - centerY, clientX - centerX);
 }
 
+export function getWheelAngleDelta(previousAngle, nextAngle) {
+  if (typeof previousAngle !== "number" || typeof nextAngle !== "number") {
+    return 0;
+  }
+
+  let angleDelta = nextAngle - previousAngle;
+  if (angleDelta > Math.PI) {
+    angleDelta -= Math.PI * 2;
+  } else if (angleDelta < -Math.PI) {
+    angleDelta += Math.PI * 2;
+  }
+
+  return angleDelta;
+}
+
 export function getWheelMove(remainingAngle, previousAngle, nextAngle, anglePerStep = Math.PI / 10) {
   if (
     typeof remainingAngle !== "number" ||
@@ -132,19 +147,73 @@ export function getWheelMove(remainingAngle, previousAngle, nextAngle, anglePerS
     return { movement: 0, remainingAngle: 0 };
   }
 
-  let angleDelta = nextAngle - previousAngle;
-  if (angleDelta > Math.PI) {
-    angleDelta -= Math.PI * 2;
-  } else if (angleDelta < -Math.PI) {
-    angleDelta += Math.PI * 2;
-  }
-
+  const angleDelta = getWheelAngleDelta(previousAngle, nextAngle);
   const totalAngle = remainingAngle + angleDelta;
   const movement = totalAngle > 0 ? Math.floor(totalAngle / anglePerStep) : Math.ceil(totalAngle / anglePerStep);
   return {
     movement,
     remainingAngle: totalAngle - movement * anglePerStep
   };
+}
+
+export function getIpodFastScrollLetter(value) {
+  const normalizedValue = String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase();
+  const match = normalizedValue.match(/[A-Z]/);
+  return match ? match[0] : "#";
+}
+
+export function buildIpodFastScrollTargets(items) {
+  const nextTargets = new Map();
+  if (!Array.isArray(items)) {
+    return nextTargets;
+  }
+
+  items.forEach((item, index) => {
+    const letter = getIpodFastScrollLetter(item?.artist);
+    if (!nextTargets.has(letter)) {
+      nextTargets.set(letter, index);
+    }
+  });
+  return nextTargets;
+}
+
+export function getNearestIpodFastScrollTarget(letter, targets) {
+  if (!(targets instanceof Map) || targets.size === 0) {
+    return null;
+  }
+
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
+  const normalizedLetter = getIpodFastScrollLetter(letter);
+  const orderedLetters = [...alphabet, "#"];
+
+  if (targets.has(normalizedLetter)) {
+    return { letter: normalizedLetter, index: targets.get(normalizedLetter) };
+  }
+
+  const targetIndex = orderedLetters.indexOf(normalizedLetter);
+  for (let distance = 1; distance < orderedLetters.length; distance += 1) {
+    const forwardIndex = targetIndex + distance;
+    if (forwardIndex < orderedLetters.length) {
+      const forwardLetter = orderedLetters[forwardIndex];
+      if (targets.has(forwardLetter)) {
+        return { letter: forwardLetter, index: targets.get(forwardLetter) };
+      }
+    }
+
+    const backwardIndex = targetIndex - distance;
+    if (backwardIndex >= 0) {
+      const backwardLetter = orderedLetters[backwardIndex];
+      if (targets.has(backwardLetter)) {
+        return { letter: backwardLetter, index: targets.get(backwardLetter) };
+      }
+    }
+  }
+
+  const [fallbackLetter, fallbackIndex] = targets.entries().next().value;
+  return { letter: fallbackLetter, index: fallbackIndex };
 }
 
 export function createPlaybackQueue(tracks, selectedTrackId = tracks[0]?.id) {

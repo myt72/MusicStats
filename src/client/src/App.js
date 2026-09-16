@@ -3,13 +3,17 @@ import "./App.css";
 import { buildChartData } from "./chartData";
 import { API_BASE_URL } from "./config";
 import {
+  buildIpodFastScrollTargets,
   buildIpodView,
   createPlaybackQueue,
+  getIpodFastScrollLetter,
+  getNearestIpodFastScrollTarget,
   getMovedIpodSelectionIndex,
   getIpodSelectionPath,
   getNextIpodSelectionIndex,
   getQueueTransportIndex,
   getWheelAngle,
+  getWheelAngleDelta,
   getWheelMove,
   groupAlbumsForArtist
 } from "./ipodBrowser";
@@ -18,6 +22,11 @@ const PHONE_MEDIA_QUERY = "(max-width: 700px)";
 const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 const DEFAULT_OUTPUTS_STORAGE_KEY = "musicstats.defaultOutputs";
 const BUILT_IN_OUTPUT_ID = "";
+const IPOD_FAST_SCROLL_LETTERS = [...ALPHABET, "#"];
+const IPOD_FAST_SCROLL_ENTER_SPEED = 0.008;
+const IPOD_FAST_SCROLL_EXIT_SPEED = 0.005;
+const IPOD_FAST_SCROLL_OVERLAY_TIMEOUT_MS = 420;
+const IPOD_FAST_SCROLL_ANGLE_PER_LETTER = Math.PI / 6;
 
 function formatCount(value) {
   return numberFormatter.format(Math.round(Number(value) || 0));
@@ -139,9 +148,42 @@ function IpodBrowser({
 }) {
   const listRef = useRef(null);
   const wheelRef = useRef(null);
-  const wheelPointerStateRef = useRef({ pointerId: null, lastAngle: null, remainingAngle: 0 });
+  const wheelPointerStateRef = useRef({ pointerId: null, lastAngle: null, lastTimestamp: 0, remainingAngle: 0 });
+  const fastScrollStateRef = useRef({ active: false, remainingAngle: 0 });
+  const fastScrollOverlayTimeoutRef = useRef(null);
+  const fastScrollLetterRef = useRef(null);
+  const [fastScrollLetter, setFastScrollLetter] = useState(null);
+  const isArtistList = title === "Artists";
+  const artistFastScrollTargets = useMemo(() => {
+    if (!isArtistList) {
+      return new Map();
+    }
+
+    return buildIpodFastScrollTargets(items);
+  }, [isArtistList, items]);
   const wheelInteractiveSelector =
     "button, [href], input, select, textarea, [role='button'], [tabindex]:not([tabindex='-1'])";
+
+  function clearFastScrollOverlayTimer() {
+    if (fastScrollOverlayTimeoutRef.current) {
+      clearTimeout(fastScrollOverlayTimeoutRef.current);
+      fastScrollOverlayTimeoutRef.current = null;
+    }
+  }
+
+  function setFastScrollOverlayLetter(nextLetter) {
+    fastScrollLetterRef.current = nextLetter;
+    setFastScrollLetter(nextLetter);
+  }
+
+  function dismissFastScrollOverlay() {
+    clearFastScrollOverlayTimer();
+    fastScrollOverlayTimeoutRef.current = setTimeout(() => {
+      fastScrollStateRef.current = { active: false, remainingAngle: 0 };
+      setFastScrollOverlayLetter(null);
+      fastScrollOverlayTimeoutRef.current = null;
+    }, IPOD_FAST_SCROLL_OVERLAY_TIMEOUT_MS);
+  }
 
   function focusItem(index) {
     const nextNode = listRef.current?.querySelector(`[data-ipod-index="${index}"]`);
@@ -153,12 +195,49 @@ function IpodBrowser({
     selectedNode?.scrollIntoView({ block: "nearest" });
   }, [items, selectedIndex]);
 
+  useEffect(() => {
+    fastScrollLetterRef.current = fastScrollLetter;
+  }, [fastScrollLetter]);
+
+  useEffect(() => {
+    return () => {
+      clearFastScrollOverlayTimer();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isArtistList) {
+      return;
+    }
+
+    fastScrollStateRef.current = { active: false, remainingAngle: 0 };
+    setFastScrollOverlayLetter(null);
+    clearFastScrollOverlayTimer();
+  }, [isArtistList]);
+
+  useEffect(() => {
+    if (!isArtistList || !items.length || selectedIndex < 0 || selectedIndex >= items.length) {
+      return;
+    }
+
+    if (!fastScrollStateRef.current.active) {
+      return;
+    }
+
+    const selectedLetter = getIpodFastScrollLetter(items[selectedIndex].artist);
+    setFastScrollOverlayLetter(selectedLetter);
+  }, [isArtistList, items, selectedIndex]);
+
   function clearWheelPointerState(pointerId) {
     if (pointerId !== undefined && wheelRef.current?.hasPointerCapture?.(pointerId)) {
       wheelRef.current.releasePointerCapture(pointerId);
     }
 
-    wheelPointerStateRef.current = { pointerId: null, lastAngle: null, remainingAngle: 0 };
+    wheelPointerStateRef.current = { pointerId: null, lastAngle: null, lastTimestamp: 0, remainingAngle: 0 };
+    fastScrollStateRef.current = { active: false, remainingAngle: 0 };
+    if (fastScrollLetterRef.current) {
+      dismissFastScrollOverlay();
+    }
   }
 
   function handleWheelPointerDown(event) {
@@ -178,7 +257,13 @@ function IpodBrowser({
 
     event.preventDefault();
     wheelRef.current?.setPointerCapture?.(event.pointerId);
-    wheelPointerStateRef.current = { pointerId: event.pointerId, lastAngle: angle, remainingAngle: 0 };
+    wheelPointerStateRef.current = {
+      pointerId: event.pointerId,
+      lastAngle: angle,
+      lastTimestamp: event.timeStamp || 0,
+      remainingAngle: 0
+    };
+    fastScrollStateRef.current = { active: false, remainingAngle: 0 };
   }
 
   function handleWheelPointerMove(event) {
@@ -193,15 +278,67 @@ function IpodBrowser({
     }
 
     event.preventDefault();
-    const nextMove = getWheelMove(pointerState.remainingAngle, pointerState.lastAngle, nextAngle);
-    if (nextMove.movement) {
-      onMove(nextMove.movement);
+    const deltaMs = Math.max(1, (event.timeStamp || 0) - (pointerState.lastTimestamp || 0));
+    const angleDelta = getWheelAngleDelta(pointerState.lastAngle, nextAngle);
+    const speed = Math.abs(angleDelta) / deltaMs;
+    const fastScrollState = fastScrollStateRef.current;
+    const canUseFastScroll = isArtistList && items.length > 0;
+    const shouldFastScroll = canUseFastScroll
+      ? fastScrollState.active
+        ? speed >= IPOD_FAST_SCROLL_EXIT_SPEED
+        : speed >= IPOD_FAST_SCROLL_ENTER_SPEED
+      : false;
+
+    let nextRemainingAngle = pointerState.remainingAngle;
+    if (shouldFastScroll) {
+      if (!fastScrollState.active) {
+        const currentArtist = items[Math.min(Math.max(selectedIndex, 0), items.length - 1)];
+        setFastScrollOverlayLetter(getIpodFastScrollLetter(currentArtist?.artist));
+      }
+
+      dismissFastScrollOverlay();
+      fastScrollState.active = true;
+      const fastMove = getWheelMove(
+        fastScrollState.remainingAngle,
+        pointerState.lastAngle,
+        nextAngle,
+        IPOD_FAST_SCROLL_ANGLE_PER_LETTER
+      );
+      fastScrollState.remainingAngle = fastMove.remainingAngle;
+      nextRemainingAngle = 0;
+
+      if (fastMove.movement) {
+        const currentLetter = fastScrollLetterRef.current || getIpodFastScrollLetter(items[selectedIndex]?.artist);
+        const currentLetterIndex = Math.max(0, IPOD_FAST_SCROLL_LETTERS.indexOf(currentLetter));
+        const nextLetterIndex = Math.min(
+          IPOD_FAST_SCROLL_LETTERS.length - 1,
+          Math.max(0, currentLetterIndex + fastMove.movement)
+        );
+        const requestedLetter = IPOD_FAST_SCROLL_LETTERS[nextLetterIndex];
+        const target = getNearestIpodFastScrollTarget(requestedLetter, artistFastScrollTargets);
+        if (target) {
+          setFastScrollOverlayLetter(target.letter);
+          onSelectIndex(target.index);
+        }
+      }
+    } else {
+      if (fastScrollState.active) {
+        fastScrollStateRef.current = { active: false, remainingAngle: 0 };
+        dismissFastScrollOverlay();
+      }
+
+      const nextMove = getWheelMove(pointerState.remainingAngle, pointerState.lastAngle, nextAngle);
+      nextRemainingAngle = nextMove.remainingAngle;
+      if (nextMove.movement) {
+        onMove(nextMove.movement);
+      }
     }
 
     wheelPointerStateRef.current = {
       pointerId: pointerState.pointerId,
       lastAngle: nextAngle,
-      remainingAngle: nextMove.remainingAngle
+      lastTimestamp: event.timeStamp || 0,
+      remainingAngle: nextRemainingAngle
     };
   }
 
@@ -209,6 +346,12 @@ function IpodBrowser({
     <section className="browser panel ipod-browser">
       <div className="ipod-shell">
         <div className="ipod-screen">
+          {fastScrollLetter && (
+            <div className="ipod-fast-scroll-overlay" role="status" aria-live="polite" aria-atomic="true">
+              <span>Jump</span>
+              <strong>{fastScrollLetter}</strong>
+            </div>
+          )}
           <div className="ipod-screen-header">
             <span>{breadcrumb}</span>
             <strong>{title}</strong>
