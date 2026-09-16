@@ -126,3 +126,24 @@ test("computeStats keeps canonical metadata artist when folder name is an alias"
   assert.strictEqual(stats.tracks[0].artist, "Smashing Pumpkins");
   assert.strictEqual(stats.artists[0].artist, "Smashing Pumpkins");
 });
+
+test("computeStats includes album counts for artist rankings", () => {
+  const stats = computeStats([
+    baseTrack({ title: "A1", artist: "Artist A", album: "Album 1" }),
+    baseTrack({ title: "A2", artist: "Artist A", album: "Album 2" }),
+    baseTrack({ title: "A3", artist: "Artist A", album: "Album 2", trackNumber: 2 }),
+    baseTrack({ title: "B1", artist: "Artist B", album: "Album 3" }),
+    baseTrack({ title: "B2", artist: "Artist B", album: "Album 4" }),
+    baseTrack({ title: "B3", artist: "Artist B", album: "Album 5" })
+  ]);
+
+  const artistA = stats.artists.find(entry => entry.artist === "Artist A");
+  const artistB = stats.artists.find(entry => entry.artist === "Artist B");
+
+  assert.strictEqual(artistA?.albumCount, 2);
+  assert.strictEqual(artistB?.albumCount, 3);
+  assert.deepStrictEqual(
+    [...stats.artists].sort((left, right) => (right.albumCount || 0) - (left.albumCount || 0)).map(entry => entry.artist),
+    ["Artist B", "Artist A"]
+  );
+});
