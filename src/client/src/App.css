@@ -591,6 +591,7 @@
 
 .ipod-wheel-button:disabled {
   color: #64748b;
+  opacity: 0.45;
   cursor: default;
 }
 

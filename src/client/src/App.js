@@ -134,7 +134,6 @@ function IpodBrowser({
   onMove,
   onTransport,
   selectedTrack,
-  canGoBack,
   canPlayPrevious,
   canPlayNext
 }) {
@@ -284,7 +283,6 @@ function IpodBrowser({
             type="button"
             className="ipod-wheel-button ipod-wheel-menu"
             onClick={onBack}
-            disabled={!canGoBack}
           >
             Menu
           </button>
@@ -1059,7 +1057,6 @@ function App() {
             onMove={moveIpodSelection}
             onTransport={transportPlaybackQueue}
             selectedTrack={selectedTrack}
-            canGoBack={Boolean(ipodAlbum || ipodArtist || phonePage === "ipod")}
             canPlayPrevious={queueIndex > 0}
             canPlayNext={queueIndex >= 0 && queueIndex < playbackQueue.length - 1}
           />
