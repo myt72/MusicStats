@@ -646,7 +646,7 @@ function App() {
     );
   }
 
-  const { totals, artists, albums, genres, years } = stats;
+  const { totals } = stats;
 
   return (
     <div className={isPhoneMode ? "app phone-mode" : "app"}>
@@ -952,59 +952,6 @@ function App() {
         </div>
       </section>
 
-      {(!isPhoneMode || showPhoneStats) && <section className="grid">
-        <div className="panel">
-          <h2>Top Artists</h2>
-          <ul>
-            {artists.slice(0, 15).map(artist => (
-              <li key={artist.artist}>
-                <strong>{artist.artist}</strong>
-                <span className="sep">•</span>
-                {formatCount(artist.trackCount)} tracks, {formatCount(artist.albumCount)} albums
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="panel">
-          <h2>Top Albums</h2>
-          <ul>
-            {albums.slice(0, 15).map(album => (
-              <li key={`${album.artist}-${album.album}`}>
-                <strong>{album.album}</strong>
-                <span className="sep">•</span>
-                {formatCount(album.trackCount)} tracks ({album.artist})
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="panel">
-          <h2>Genres</h2>
-          <ul>
-            {genres.slice(0, 15).map(genre => (
-              <li key={genre.genre}>
-                <strong>{genre.genre}</strong>
-                <span className="sep">•</span>
-                {formatCount(genre.trackCount)} tracks
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="panel">
-          <h2>Years</h2>
-          <ul>
-            {years.slice(0, 15).map(year => (
-              <li key={year.year}>
-                <strong>{year.year}</strong>
-                <span className="sep">•</span>
-                {formatCount(year.trackCount)} tracks
-              </li>
-            ))}
-          </ul>
-        </div>
-      </section>}
     </div>
   );
 }

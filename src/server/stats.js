@@ -26,6 +26,28 @@ function normalizeExclusionSet(values, defaults) {
   return new Set(list.map(value => String(value).trim().toLowerCase()).filter(Boolean));
 }
 
+function normalizeArtistAliasMap(artistAliases) {
+  if (!artistAliases || typeof artistAliases !== "object") {
+    return new Map();
+  }
+
+  const map = new Map();
+  for (const [alias, canonicalArtist] of Object.entries(artistAliases)) {
+    const normalizedAlias = String(alias).trim().toLowerCase();
+    const normalizedCanonicalArtist = toNonEmptyString(canonicalArtist, "");
+    if (normalizedAlias && normalizedCanonicalArtist) {
+      map.set(normalizedAlias, normalizedCanonicalArtist);
+    }
+  }
+
+  return map;
+}
+
+function canonicalizeArtistName(rawArtist, artistAliasMap) {
+  const normalizedArtist = toNonEmptyString(rawArtist, "Unknown Artist");
+  return artistAliasMap.get(normalizedArtist.toLowerCase()) || normalizedArtist;
+}
+
 function sortByTrackCountDesc(items, key) {
   return [...items].sort((left, right) => {
     if (right.trackCount !== left.trackCount) {
@@ -38,6 +60,7 @@ function sortByTrackCountDesc(items, key) {
 
 export function computeStats(tracks, config = {}) {
   const exclusions = config.exclusions || {};
+  const artistAliasMap = normalizeArtistAliasMap(config.artistAliases);
   const excludedArtists = normalizeExclusionSet(exclusions.topArtists, DEFAULT_EXCLUSIONS.topArtists);
   const excludedAlbums = normalizeExclusionSet(exclusions.topAlbums, DEFAULT_EXCLUSIONS.topAlbums);
   const excludedBrowseArtists = normalizeExclusionSet(
@@ -50,7 +73,7 @@ export function computeStats(tracks, config = {}) {
   );
 
   const normalizedTracks = tracks.map((track, index) => {
-    const artist = toNonEmptyString(track.artist || track.artistFolder, "Unknown Artist");
+    const artist = canonicalizeArtistName(track.artist || track.artistFolder, artistAliasMap);
     const album = toNonEmptyString(track.album || track.albumFolder, "Unknown Album");
     const genres = Array.isArray(track.genre)
       ? track.genre.map(value => String(value).trim()).filter(Boolean)
