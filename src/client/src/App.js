@@ -167,7 +167,8 @@ function IpodBrowser({
       return;
     }
 
-    if (event.target.closest(wheelInteractiveSelector)) {
+    const interactiveTarget = event.target.closest(wheelInteractiveSelector);
+    if (interactiveTarget && interactiveTarget !== wheelRef.current) {
       return;
     }
 
@@ -277,6 +278,7 @@ function IpodBrowser({
           onPointerMove={handleWheelPointerMove}
           onPointerUp={event => clearWheelPointerState(event.pointerId)}
           onPointerCancel={event => clearWheelPointerState(event.pointerId)}
+          onLostPointerCapture={event => clearWheelPointerState(event.pointerId)}
         >
           <button
             type="button"
@@ -920,7 +922,10 @@ function App() {
       return;
     }
 
-    playQueueTracks(ipodView.items, selectedIpodItem.id);
+    playQueueTracks(
+      library.tracks.filter(track => track.artist === ipodArtist && track.album === ipodAlbum),
+      selectedIpodItem.id
+    );
   }
 
   function goBackIpodLevel() {
