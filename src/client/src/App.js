@@ -4,10 +4,14 @@ import { buildChartData } from "./chartData";
 import { API_BASE_URL } from "./config";
 import {
   buildIpodView,
+  createPlaybackQueue,
+  getMovedIpodSelectionIndex,
   getIpodSelectionPath,
   getNextIpodSelectionIndex,
-  groupAlbumsForArtist,
-  sortAlbumTracks
+  getQueueTransportIndex,
+  getWheelAngle,
+  getWheelMove,
+  groupAlbumsForArtist
 } from "./ipodBrowser";
 const numberFormatter = new Intl.NumberFormat();
 const PHONE_MEDIA_QUERY = "(max-width: 700px)";
@@ -128,9 +132,15 @@ function IpodBrowser({
   onActivate,
   onBack,
   onMove,
-  selectedTrack
+  onTransport,
+  selectedTrack,
+  canGoBack,
+  canPlayPrevious,
+  canPlayNext
 }) {
   const listRef = useRef(null);
+  const wheelRef = useRef(null);
+  const wheelPointerStateRef = useRef({ pointerId: null, lastAngle: null, remainingAngle: 0 });
 
   function focusItem(index) {
     const nextNode = listRef.current?.querySelector(`[data-ipod-index="${index}"]`);
@@ -141,6 +151,57 @@ function IpodBrowser({
     const selectedNode = listRef.current?.querySelector(`[data-ipod-index="${selectedIndex}"]`);
     selectedNode?.scrollIntoView({ block: "nearest" });
   }, [items, selectedIndex]);
+
+  function clearWheelPointerState(pointerId) {
+    if (pointerId !== undefined && wheelRef.current?.hasPointerCapture?.(pointerId)) {
+      wheelRef.current.releasePointerCapture(pointerId);
+    }
+
+    wheelPointerStateRef.current = { pointerId: null, lastAngle: null, remainingAngle: 0 };
+  }
+
+  function handleWheelPointerDown(event) {
+    if (event.button !== undefined && event.button !== 0) {
+      return;
+    }
+
+    if (event.target.closest("button")) {
+      return;
+    }
+
+    const angle = getWheelAngle(event.clientX, event.clientY, wheelRef.current?.getBoundingClientRect());
+    if (angle === null) {
+      return;
+    }
+
+    event.preventDefault();
+    wheelRef.current?.setPointerCapture?.(event.pointerId);
+    wheelPointerStateRef.current = { pointerId: event.pointerId, lastAngle: angle, remainingAngle: 0 };
+  }
+
+  function handleWheelPointerMove(event) {
+    const pointerState = wheelPointerStateRef.current;
+    if (pointerState.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const nextAngle = getWheelAngle(event.clientX, event.clientY, wheelRef.current?.getBoundingClientRect());
+    if (nextAngle === null || pointerState.lastAngle === null) {
+      return;
+    }
+
+    event.preventDefault();
+    const nextMove = getWheelMove(pointerState.remainingAngle, pointerState.lastAngle, nextAngle);
+    if (nextMove.movement) {
+      onMove(nextMove.movement);
+    }
+
+    wheelPointerStateRef.current = {
+      pointerId: pointerState.pointerId,
+      lastAngle: nextAngle,
+      remainingAngle: nextMove.remainingAngle
+    };
+  }
 
   return (
     <section className="browser panel ipod-browser">
@@ -189,7 +250,6 @@ function IpodBrowser({
                   }}
                   onClick={() => {
                     onSelectIndex(index);
-                    onActivate(index);
                   }}
                 >
                   <span className="ipod-item-label">{item.label}</span>
@@ -207,35 +267,55 @@ function IpodBrowser({
             </div>
           )}
         </div>
-        <div className="ipod-wheel" aria-label="iPod-style navigation wheel">
-          <button type="button" className="ipod-wheel-button ipod-wheel-menu" onClick={onBack}>
+        <div
+          className="ipod-wheel"
+          aria-label="iPod-style navigation wheel"
+          ref={wheelRef}
+          onPointerDown={handleWheelPointerDown}
+          onPointerMove={handleWheelPointerMove}
+          onPointerUp={event => clearWheelPointerState(event.pointerId)}
+          onPointerCancel={event => clearWheelPointerState(event.pointerId)}
+        >
+          <button
+            type="button"
+            className="ipod-wheel-button ipod-wheel-menu"
+            onClick={onBack}
+            disabled={!canGoBack}
+          >
             Menu
           </button>
           <button
             type="button"
-            className="ipod-wheel-button ipod-wheel-up"
-            onClick={() => onMove(-1)}
-            aria-label="Scroll up"
+            className="ipod-wheel-button ipod-wheel-left"
+            onClick={() => onTransport(-1)}
+            aria-label="Previous song"
+            disabled={!canPlayPrevious}
           >
-            ▲
+            ◀◀
           </button>
           <button
             type="button"
             className="ipod-wheel-button ipod-wheel-right"
-            onClick={() => onActivate(selectedIndex)}
-            aria-label="Select highlighted item"
+            onClick={() => onTransport(1)}
+            aria-label="Next song"
+            disabled={!canPlayNext}
           >
-            ▶
+            ▶▶
           </button>
           <button
             type="button"
             className="ipod-wheel-button ipod-wheel-down"
             onClick={() => onMove(1)}
-            aria-label="Scroll down"
+            aria-label="Scroll list down"
           >
-            ▼
+            Scroll
           </button>
-          <button type="button" className="ipod-wheel-center" onClick={() => onActivate(selectedIndex)}>
+          <button
+            type="button"
+            className="ipod-wheel-center"
+            onClick={() => onActivate(selectedIndex)}
+            aria-label="Select highlighted item"
+          >
             Select
           </button>
         </div>
@@ -481,15 +561,19 @@ function App() {
     setQueueIndex(-1);
   }
 
-  function playAlbumTracks(tracks) {
-    const orderedTracks = sortAlbumTracks(tracks);
-    if (!orderedTracks.length) {
+  function playQueueTracks(tracks, selectedTrackId) {
+    const nextPlayback = createPlaybackQueue(tracks, selectedTrackId);
+    if (!nextPlayback.selectedTrack) {
       return;
     }
 
-    setPlaybackQueue(orderedTracks.map(track => track.id));
-    setQueueIndex(0);
-    setSelectedTrack(orderedTracks[0]);
+    setPlaybackQueue(nextPlayback.queue);
+    setQueueIndex(nextPlayback.queueIndex);
+    setSelectedTrack(nextPlayback.selectedTrack);
+  }
+
+  function playAlbumTracks(tracks) {
+    playQueueTracks(tracks);
   }
 
   function handleAudioEnded() {
@@ -497,8 +581,8 @@ function App() {
     const allTracks = libraryTracksRef.current;
 
     setQueueIndex(currentIndex => {
-      const nextIndex = currentIndex + 1;
-      if (currentIndex < 0 || nextIndex >= activeQueue.length) {
+      const nextIndex = getQueueTransportIndex(currentIndex, activeQueue.length, 1);
+      if (nextIndex < 0) {
         setPlaybackQueue([]);
         return -1;
       }
@@ -507,6 +591,26 @@ function App() {
       if (!nextTrack) {
         setPlaybackQueue([]);
         return -1;
+      }
+
+      setSelectedTrack(nextTrack);
+      return nextIndex;
+    });
+  }
+
+  function transportPlaybackQueue(direction) {
+    const activeQueue = playbackQueueRef.current;
+    const allTracks = libraryTracksRef.current;
+
+    setQueueIndex(currentIndex => {
+      const nextIndex = getQueueTransportIndex(currentIndex, activeQueue.length, direction);
+      if (nextIndex < 0) {
+        return currentIndex;
+      }
+
+      const nextTrack = allTracks.find(track => track.id === activeQueue[nextIndex]);
+      if (!nextTrack) {
+        return currentIndex;
       }
 
       setSelectedTrack(nextTrack);
@@ -783,22 +887,7 @@ function App() {
   }
 
   function moveIpodSelection(direction) {
-    setIpodSelectionIndex(currentIndex => {
-      if (!ipodView.items.length) {
-        return 0;
-      }
-
-      const nextIndex = currentIndex + direction;
-      if (nextIndex < 0) {
-        return 0;
-      }
-
-      if (nextIndex >= ipodView.items.length) {
-        return ipodView.items.length - 1;
-      }
-
-      return nextIndex;
-    });
+    setIpodSelectionIndex(currentIndex => getMovedIpodSelectionIndex(currentIndex, ipodView.items.length, direction));
   }
 
   function activateIpodItem(index = ipodSelectionIndex) {
@@ -827,7 +916,7 @@ function App() {
       return;
     }
 
-    playTrack(selectedIpodItem);
+    playQueueTracks(ipodView.items, selectedIpodItem.id);
   }
 
   function goBackIpodLevel() {
@@ -842,7 +931,10 @@ function App() {
       setIpodArtist(null);
       setIpodSelectionIndex(0);
       setSelectedFilter(null);
+      return;
     }
+
+    setPhonePage("browser");
   }
 
   if (loading) {
@@ -952,7 +1044,11 @@ function App() {
             onActivate={activateIpodItem}
             onBack={goBackIpodLevel}
             onMove={moveIpodSelection}
+            onTransport={transportPlaybackQueue}
             selectedTrack={selectedTrack}
+            canGoBack={Boolean(ipodAlbum || ipodArtist || phonePage === "ipod")}
+            canPlayPrevious={queueIndex > 0}
+            canPlayNext={queueIndex >= 0 && queueIndex < playbackQueue.length - 1}
           />
           <section className="panel ipod-player-panel">
             {selectedTrack ? (

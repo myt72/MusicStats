@@ -1,6 +1,15 @@
 import assert from "assert";
 import test from "node:test";
-import { buildIpodView, getIpodSelectionPath, getNextIpodSelectionIndex } from "./ipodBrowser.js";
+import {
+  buildIpodView,
+  createPlaybackQueue,
+  getIpodSelectionPath,
+  getMovedIpodSelectionIndex,
+  getNextIpodSelectionIndex,
+  getQueueTransportIndex,
+  getWheelAngle,
+  getWheelMove
+} from "./ipodBrowser.js";
 
 const artists = [
   { artist: "Zulu", albumCount: 1, trackCount: 1 },
@@ -62,4 +71,31 @@ test("iPod selection resets when moving from artists to albums to songs", () => 
     songView.items.map(item => item.title),
     ["Album Opener", "Second Song"]
   );
+});
+
+test("wheel movement turns rotation into bounded list movement", () => {
+  const wheelRect = { left: 0, top: 0, width: 200, height: 200 };
+  const topAngle = getWheelAngle(100, 0, wheelRect);
+  const rightAngle = getWheelAngle(200, 100, wheelRect);
+  const wrappedMove = getWheelMove(0, Math.PI * 0.95, -Math.PI * 0.95);
+
+  assert.ok(topAngle < 0);
+  assert.ok(rightAngle > topAngle);
+  assert.deepStrictEqual(getWheelMove(0, topAngle, rightAngle, Math.PI / 4), {
+    movement: 2,
+    remainingAngle: 0
+  });
+  assert.strictEqual(wrappedMove.movement, 1);
+  assert.strictEqual(getMovedIpodSelectionIndex(1, 3, 5), 2);
+  assert.strictEqual(getMovedIpodSelectionIndex(1, 3, -5), 0);
+});
+
+test("queue helpers keep song playback inside the selected album queue", () => {
+  const playback = createPlaybackQueue(tracks.filter(track => track.album === "Second Album"), "1");
+
+  assert.deepStrictEqual(playback.queue, ["3", "1"]);
+  assert.strictEqual(playback.queueIndex, 1);
+  assert.strictEqual(playback.selectedTrack?.title, "Second Song");
+  assert.strictEqual(getQueueTransportIndex(playback.queueIndex, playback.queue.length, -1), 0);
+  assert.strictEqual(getQueueTransportIndex(playback.queueIndex, playback.queue.length, 1), -1);
 });
