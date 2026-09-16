@@ -43,26 +43,31 @@ function normalizeArtistAliasMap(artistAliases) {
   return map;
 }
 
-function canonicalizeArtistName(rawArtist, fallbackArtist, artistAliasMap, canonicalArtistSet) {
+function canonicalizeArtistName(rawArtist, fallbackArtist, artistAliasMap) {
   const primaryArtist = toNonEmptyString(rawArtist, "");
-  const fallbackCanonicalArtist = toNonEmptyString(fallbackArtist, "Unknown Artist");
-  const canonicalFallbackArtist =
-    artistAliasMap.get(fallbackCanonicalArtist.toLowerCase()) || fallbackCanonicalArtist;
+  const fallbackCanonicalArtist = toNonEmptyString(fallbackArtist, "");
+  const canonicalFallbackArtist = fallbackCanonicalArtist
+    ? artistAliasMap.get(fallbackCanonicalArtist.toLowerCase()) || fallbackCanonicalArtist
+    : "";
 
   if (!primaryArtist) {
+    return canonicalFallbackArtist || "Unknown Artist";
+  }
+
+  const canonicalPrimaryArtist = artistAliasMap.get(primaryArtist.toLowerCase()) || primaryArtist;
+  if (!fallbackCanonicalArtist) {
+    return canonicalPrimaryArtist;
+  }
+
+  const fallbackAliasesToPrimary =
+    artistAliasMap.get(fallbackCanonicalArtist.toLowerCase())?.toLowerCase() === primaryArtist.toLowerCase();
+  const primaryAliasesToFallback =
+    artistAliasMap.get(primaryArtist.toLowerCase())?.toLowerCase() === fallbackCanonicalArtist.toLowerCase();
+  if (fallbackAliasesToPrimary || primaryAliasesToFallback) {
     return canonicalFallbackArtist;
   }
 
-  const normalizedPrimaryArtist = primaryArtist.toLowerCase();
-  if (artistAliasMap.has(normalizedPrimaryArtist)) {
-    return artistAliasMap.get(normalizedPrimaryArtist);
-  }
-
-  if (canonicalArtistSet.has(canonicalFallbackArtist.toLowerCase())) {
-    return canonicalFallbackArtist;
-  }
-
-  return primaryArtist;
+  return canonicalPrimaryArtist;
 }
 
 function sortByTrackCountDesc(items, key) {
@@ -78,7 +83,6 @@ function sortByTrackCountDesc(items, key) {
 export function computeStats(tracks, config = {}) {
   const exclusions = config.exclusions || {};
   const artistAliasMap = normalizeArtistAliasMap(config.artistAliases);
-  const canonicalArtistSet = new Set(Array.from(artistAliasMap.values()).map(value => value.toLowerCase()));
   const excludedArtists = normalizeExclusionSet(exclusions.topArtists, DEFAULT_EXCLUSIONS.topArtists);
   const excludedAlbums = normalizeExclusionSet(exclusions.topAlbums, DEFAULT_EXCLUSIONS.topAlbums);
   const excludedBrowseArtists = normalizeExclusionSet(
@@ -91,7 +95,7 @@ export function computeStats(tracks, config = {}) {
   );
 
   const normalizedTracks = tracks.map((track, index) => {
-    const artist = canonicalizeArtistName(track.artist, track.artistFolder, artistAliasMap, canonicalArtistSet);
+    const artist = canonicalizeArtistName(track.artist, track.artistFolder, artistAliasMap);
     const album = toNonEmptyString(track.album || track.albumFolder, "Unknown Album");
     const genres = Array.isArray(track.genre)
       ? track.genre.map(value => String(value).trim()).filter(Boolean)

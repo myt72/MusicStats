@@ -78,7 +78,7 @@ test("computeStats applies artist aliases across artists, albums, and tracks", (
   assert.ok(stats.tracks.every(track => track.artist === "Smashing Pumpkins"));
 });
 
-test("computeStats prefers canonical folder artist when metadata variant is unmapped", () => {
+test("computeStats does not remap metadata artists without explicit alias mapping", () => {
   const stats = computeStats(
     [
       baseTrack({
@@ -102,6 +102,6 @@ test("computeStats prefers canonical folder artist when metadata variant is unma
   );
 
   assert.strictEqual(stats.artists.filter(entry => entry.artist === "Smashing Pumpkins").length, 1);
-  assert.strictEqual(stats.albums.filter(album => album.artist === "Smashing Pumpkins").length, 1);
-  assert.ok(stats.tracks.every(track => track.artist === "Smashing Pumpkins"));
+  assert.strictEqual(stats.artists.filter(entry => entry.artist === "Smashing Pumpkins (Live)").length, 1);
+  assert.strictEqual(stats.albums.filter(album => album.album === "Siamese Dream").length, 2);
 });
