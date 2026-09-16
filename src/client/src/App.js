@@ -848,7 +848,6 @@ function App() {
       return;
     }
 
-    showAlbumFilter(selectedIpodItem.album, selectedIpodItem.artist);
     playTrack(selectedIpodItem);
   }
 
