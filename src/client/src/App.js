@@ -151,7 +151,6 @@ function ChartCard({ title, items, labelForItem, valueForItem = item => item.tra
 }
 
 function IpodBrowser({
-  sectionId,
   title,
   breadcrumb,
   items,
@@ -175,7 +174,7 @@ function IpodBrowser({
   }, [items, selectedIndex]);
 
   return (
-    <section className="browser panel ipod-browser" id={sectionId}>
+    <section className="browser panel ipod-browser">
       <div className="ipod-shell">
         <div className="ipod-screen">
           <div className="ipod-screen-header">
@@ -190,7 +189,6 @@ function IpodBrowser({
                   data-ipod-index={index}
                   className={index === selectedIndex ? "ipod-list-item active" : "ipod-list-item"}
                   tabIndex={index === selectedIndex ? 0 : -1}
-                  aria-current={index === selectedIndex ? "true" : undefined}
                   onFocus={() => onSelectIndex(index)}
                   onKeyDown={event => {
                     if (event.key === "ArrowUp") {
@@ -986,20 +984,14 @@ function App() {
       </header>
 
       {isPhoneMode && (
-        <div className="browser-tabs phone-page-tabs" role="tablist" aria-label="Phone view mode">
+        <div className="browser-tabs phone-page-tabs" aria-label="Phone view mode">
           <button
-            role="tab"
-            aria-selected={phonePage === "browser"}
-            aria-controls="phone-library-view"
             className={phonePage === "browser" ? "tab active" : "tab"}
             onClick={() => setPhonePage("browser")}
           >
             Library
           </button>
           <button
-            role="tab"
-            aria-selected={phonePage === "ipod"}
-            aria-controls="phone-ipod-view"
             className={phonePage === "ipod" ? "tab active" : "tab"}
             onClick={() => {
               setPhonePage("ipod");
@@ -1055,7 +1047,6 @@ function App() {
       {isPhoneMode && phonePage === "ipod" ? (
         <>
           <IpodBrowser
-            sectionId="phone-ipod-view"
             title={ipodView.title}
             breadcrumb={ipodView.breadcrumb}
             items={ipodView.items}
@@ -1084,7 +1075,7 @@ function App() {
           </section>
         </>
       ) : (
-        <section className="browser panel" id={isPhoneMode ? "phone-library-view" : undefined}>
+        <section className="browser panel">
         <div className="browser-header">
           <div>
             <h2>Music Browser</h2>
