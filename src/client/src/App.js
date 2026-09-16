@@ -151,6 +151,7 @@ function ChartCard({ title, items, labelForItem, valueForItem = item => item.tra
 }
 
 function IpodBrowser({
+  sectionId,
   title,
   breadcrumb,
   items,
@@ -163,14 +164,18 @@ function IpodBrowser({
 }) {
   const listRef = useRef(null);
 
+  function focusItem(index) {
+    const nextNode = listRef.current?.querySelector(`[data-ipod-index="${index}"]`);
+    nextNode?.focus();
+  }
+
   useEffect(() => {
     const selectedNode = listRef.current?.querySelector(`[data-ipod-index="${selectedIndex}"]`);
-    selectedNode?.focus({ preventScroll: true });
     selectedNode?.scrollIntoView({ block: "nearest" });
   }, [items, selectedIndex]);
 
   return (
-    <section className="browser panel ipod-browser">
+    <section className="browser panel ipod-browser" id={sectionId}>
       <div className="ipod-shell">
         <div className="ipod-screen">
           <div className="ipod-screen-header">
@@ -190,16 +195,23 @@ function IpodBrowser({
                   onKeyDown={event => {
                     if (event.key === "ArrowUp") {
                       event.preventDefault();
-                      onMove(-1);
+                      const nextIndex = Math.max(index - 1, 0);
+                      onSelectIndex(nextIndex);
+                      focusItem(nextIndex);
                     } else if (event.key === "ArrowDown") {
                       event.preventDefault();
-                      onMove(1);
+                      const nextIndex = Math.min(index + 1, items.length - 1);
+                      onSelectIndex(nextIndex);
+                      focusItem(nextIndex);
                     } else if (event.key === "Home") {
                       event.preventDefault();
                       onSelectIndex(0);
+                      focusItem(0);
                     } else if (event.key === "End") {
                       event.preventDefault();
-                      onSelectIndex(Math.max(items.length - 1, 0));
+                      const nextIndex = Math.max(items.length - 1, 0);
+                      onSelectIndex(nextIndex);
+                      focusItem(nextIndex);
                     } else if (event.key === "Enter" || event.key === " ") {
                       event.preventDefault();
                       onActivate(index);
@@ -974,11 +986,20 @@ function App() {
       </header>
 
       {isPhoneMode && (
-        <div className="browser-tabs phone-page-tabs">
-          <button className={phonePage === "browser" ? "tab active" : "tab"} onClick={() => setPhonePage("browser")}>
+        <div className="browser-tabs phone-page-tabs" role="tablist" aria-label="Phone view mode">
+          <button
+            role="tab"
+            aria-selected={phonePage === "browser"}
+            aria-controls="phone-library-view"
+            className={phonePage === "browser" ? "tab active" : "tab"}
+            onClick={() => setPhonePage("browser")}
+          >
             Library
           </button>
           <button
+            role="tab"
+            aria-selected={phonePage === "ipod"}
+            aria-controls="phone-ipod-view"
             className={phonePage === "ipod" ? "tab active" : "tab"}
             onClick={() => {
               setPhonePage("ipod");
@@ -1034,6 +1055,7 @@ function App() {
       {isPhoneMode && phonePage === "ipod" ? (
         <>
           <IpodBrowser
+            sectionId="phone-ipod-view"
             title={ipodView.title}
             breadcrumb={ipodView.breadcrumb}
             items={ipodView.items}
@@ -1062,7 +1084,7 @@ function App() {
           </section>
         </>
       ) : (
-        <section className="browser panel">
+        <section className="browser panel" id={isPhoneMode ? "phone-library-view" : undefined}>
         <div className="browser-header">
           <div>
             <h2>Music Browser</h2>
