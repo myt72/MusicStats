@@ -18,5 +18,8 @@
   "exclusions": {
     "topArtists": ["Various Artists"],
     "topAlbums": ["Greatest Hits"]
+  },
+  "artistAliases": {
+    "The Smashing Pumpkins": "Smashing Pumpkins"
   }
 }

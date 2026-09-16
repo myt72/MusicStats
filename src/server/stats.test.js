@@ -44,3 +44,85 @@ test("computeStats orders album tracks by disc then track number", () => {
 
   assert.deepStrictEqual(titles, ["Disc 1 - Track 1", "Disc 1 - Track 2", "Disc 2 - Track 1"]);
 });
+
+test("computeStats applies artist aliases across artists, albums, and tracks", () => {
+  const stats = computeStats(
+    [
+      baseTrack({
+        title: "Alias Track",
+        artist: " The Smashing Pumpkins ",
+        artistFolder: "Smashing Pumpkins",
+        album: "Siamese Dream"
+      }),
+      baseTrack({
+        title: "Canonical Track",
+        artist: "Smashing Pumpkins",
+        artistFolder: "Smashing Pumpkins",
+        album: "Siamese Dream"
+      })
+    ],
+    {
+      artistAliases: {
+        "the smashing pumpkins": "Smashing Pumpkins"
+      }
+    }
+  );
+
+  assert.ok(stats.artists.some(entry => entry.artist === "Smashing Pumpkins" && entry.trackCount === 2));
+  assert.ok(!stats.artists.some(entry => entry.artist === "The Smashing Pumpkins"));
+  assert.strictEqual(stats.browse.artists.filter(entry => entry.artist === "Smashing Pumpkins").length, 1);
+  assert.strictEqual(
+    stats.albums.filter(album => album.artist === "Smashing Pumpkins" && album.album === "Siamese Dream").length,
+    1
+  );
+  assert.ok(stats.tracks.every(track => track.artist === "Smashing Pumpkins"));
+});
+
+test("computeStats does not remap metadata artists without explicit alias mapping", () => {
+  const stats = computeStats(
+    [
+      baseTrack({
+        title: "Split Metadata",
+        artist: "Smashing Pumpkins (Live)",
+        artistFolder: "Smashing Pumpkins",
+        album: "Siamese Dream"
+      }),
+      baseTrack({
+        title: "Canonical Track",
+        artist: "Smashing Pumpkins",
+        artistFolder: "Smashing Pumpkins",
+        album: "Siamese Dream"
+      })
+    ],
+    {
+      artistAliases: {
+        "The Smashing Pumpkins": "Smashing Pumpkins"
+      }
+    }
+  );
+
+  assert.strictEqual(stats.artists.filter(entry => entry.artist === "Smashing Pumpkins").length, 1);
+  assert.strictEqual(stats.artists.filter(entry => entry.artist === "Smashing Pumpkins (Live)").length, 1);
+  assert.strictEqual(stats.albums.filter(album => album.album === "Siamese Dream").length, 2);
+});
+
+test("computeStats keeps canonical metadata artist when folder name is an alias", () => {
+  const stats = computeStats(
+    [
+      baseTrack({
+        title: "Canonical Metadata",
+        artist: "Smashing Pumpkins",
+        artistFolder: "The Smashing Pumpkins",
+        album: "Siamese Dream"
+      })
+    ],
+    {
+      artistAliases: {
+        "The Smashing Pumpkins": "Smashing Pumpkins"
+      }
+    }
+  );
+
+  assert.strictEqual(stats.tracks[0].artist, "Smashing Pumpkins");
+  assert.strictEqual(stats.artists[0].artist, "Smashing Pumpkins");
+});
