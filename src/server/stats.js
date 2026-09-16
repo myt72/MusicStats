@@ -45,29 +45,12 @@ function normalizeArtistAliasMap(artistAliases) {
 
 function canonicalizeArtistName(rawArtist, fallbackArtist, artistAliasMap) {
   const primaryArtist = toNonEmptyString(rawArtist, "");
-  const fallbackCanonicalArtist = toNonEmptyString(fallbackArtist, "");
-  const canonicalFallbackArtist = fallbackCanonicalArtist
-    ? artistAliasMap.get(fallbackCanonicalArtist.toLowerCase()) || fallbackCanonicalArtist
-    : "";
-
-  if (!primaryArtist) {
-    return canonicalFallbackArtist || "Unknown Artist";
+  if (primaryArtist) {
+    return artistAliasMap.get(primaryArtist.toLowerCase()) || primaryArtist;
   }
 
-  const canonicalPrimaryArtist = artistAliasMap.get(primaryArtist.toLowerCase()) || primaryArtist;
-  if (!fallbackCanonicalArtist) {
-    return canonicalPrimaryArtist;
-  }
-
-  const fallbackAliasesToPrimary =
-    artistAliasMap.get(fallbackCanonicalArtist.toLowerCase())?.toLowerCase() === primaryArtist.toLowerCase();
-  const primaryAliasesToFallback =
-    artistAliasMap.get(primaryArtist.toLowerCase())?.toLowerCase() === fallbackCanonicalArtist.toLowerCase();
-  if (fallbackAliasesToPrimary || primaryAliasesToFallback) {
-    return canonicalFallbackArtist;
-  }
-
-  return canonicalPrimaryArtist;
+  const fallbackCanonicalArtist = toNonEmptyString(fallbackArtist, "Unknown Artist");
+  return artistAliasMap.get(fallbackCanonicalArtist.toLowerCase()) || fallbackCanonicalArtist;
 }
 
 function sortByTrackCountDesc(items, key) {

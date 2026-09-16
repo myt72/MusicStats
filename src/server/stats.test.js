@@ -105,3 +105,24 @@ test("computeStats does not remap metadata artists without explicit alias mappin
   assert.strictEqual(stats.artists.filter(entry => entry.artist === "Smashing Pumpkins (Live)").length, 1);
   assert.strictEqual(stats.albums.filter(album => album.album === "Siamese Dream").length, 2);
 });
+
+test("computeStats keeps canonical metadata artist when folder name is an alias", () => {
+  const stats = computeStats(
+    [
+      baseTrack({
+        title: "Canonical Metadata",
+        artist: "Smashing Pumpkins",
+        artistFolder: "The Smashing Pumpkins",
+        album: "Siamese Dream"
+      })
+    ],
+    {
+      artistAliases: {
+        "The Smashing Pumpkins": "Smashing Pumpkins"
+      }
+    }
+  );
+
+  assert.strictEqual(stats.tracks[0].artist, "Smashing Pumpkins");
+  assert.strictEqual(stats.artists[0].artist, "Smashing Pumpkins");
+});
