@@ -38,12 +38,12 @@ const tracks = [
   }
 ];
 
-test("buildIpodView sorts artists and creates stable unique row keys", () => {
+test("buildIpodView sorts artists, de-duplicates artist rows, and creates stable unique row keys", () => {
   const view = buildIpodView(artists, tracks, null, null);
 
   assert.deepStrictEqual(
     view.items.map(item => item.artist),
-    ["Alpha", "Alpha", "Zulu"]
+    ["Alpha", "Zulu"]
   );
   assert.strictEqual(new Set(view.items.map(item => item.key)).size, view.items.length);
 });

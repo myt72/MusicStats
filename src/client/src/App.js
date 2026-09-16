@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
+import { buildChartData } from "./chartData";
 import { API_BASE_URL } from "./config";
 import {
   buildIpodView,
@@ -656,29 +657,7 @@ function App() {
   }, [library.tracks, selectedFilter]);
 
   const chartData = useMemo(() => {
-    if (!stats) {
-      return { artists: [], albums: [], artistsByAlbumCount: [], genres: [], years: [] };
-    }
-
-    return {
-      artists: stats.artists.slice(0, 10),
-      artistsByAlbumCount: [...stats.artists]
-        .sort((left, right) => {
-          if ((right.albumCount || 0) !== (left.albumCount || 0)) {
-            return (right.albumCount || 0) - (left.albumCount || 0);
-          }
-
-          if (right.trackCount !== left.trackCount) {
-            return right.trackCount - left.trackCount;
-          }
-
-          return left.artist.localeCompare(right.artist);
-        })
-        .slice(0, 10),
-      albums: stats.albums.slice(0, 10),
-      genres: stats.genres.slice(0, 10),
-      years: [...stats.years].sort((left, right) => right.trackCount - left.trackCount).slice(0, 10)
-    };
+    return buildChartData(stats);
   }, [stats]);
   const ipodView = useMemo(() => {
     const nextView = buildIpodView(library.browse.artists, library.tracks, ipodArtist, ipodAlbum);
@@ -914,10 +893,7 @@ function App() {
           </button>
           <button
             className={phonePage === "ipod" ? "tab active" : "tab"}
-            onClick={() => {
-              setPhonePage("ipod");
-              setSearchQuery("");
-            }}
+            onClick={() => setPhonePage("ipod")}
           >
             iPod Dial
           </button>

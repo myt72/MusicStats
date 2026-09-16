@@ -38,7 +38,20 @@ export function groupAlbumsForArtist(tracks, artist) {
 }
 
 export function buildIpodView(artists, tracks, ipodArtist, ipodAlbum) {
-  const sortedArtists = [...artists].sort((left, right) => left.artist.localeCompare(right.artist));
+  const normalizedArtists = Array.from(
+    artists.reduce((artistMap, item) => {
+      const existing = artistMap.get(item.artist);
+      if (
+        !existing ||
+        (item.albumCount || 0) > (existing.albumCount || 0) ||
+        ((item.albumCount || 0) === (existing.albumCount || 0) && item.trackCount > existing.trackCount)
+      ) {
+        artistMap.set(item.artist, item);
+      }
+      return artistMap;
+    }, new Map()).values()
+  );
+  const sortedArtists = normalizedArtists.sort((left, right) => left.artist.localeCompare(right.artist));
 
   if (!ipodArtist) {
     return {
