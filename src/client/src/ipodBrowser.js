@@ -102,3 +102,71 @@ export function getNextIpodSelectionIndex(currentIndex, itemCount, previousPath,
 
   return Math.max(0, Math.min(currentIndex, itemCount - 1));
 }
+
+export function getMovedIpodSelectionIndex(currentIndex, itemCount, movement) {
+  if (!itemCount) {
+    return 0;
+  }
+
+  return Math.max(0, Math.min(currentIndex + movement, itemCount - 1));
+}
+
+export function getWheelAngle(clientX, clientY, rect) {
+  if (!rect || typeof clientX !== "number" || typeof clientY !== "number") {
+    return null;
+  }
+
+  const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2;
+  return Math.atan2(clientY - centerY, clientX - centerX);
+}
+
+export function getWheelMove(remainingAngle, previousAngle, nextAngle, anglePerStep = Math.PI / 10) {
+  if (
+    typeof remainingAngle !== "number" ||
+    typeof previousAngle !== "number" ||
+    typeof nextAngle !== "number" ||
+    typeof anglePerStep !== "number" ||
+    anglePerStep <= 0
+  ) {
+    return { movement: 0, remainingAngle: 0 };
+  }
+
+  let angleDelta = nextAngle - previousAngle;
+  if (angleDelta > Math.PI) {
+    angleDelta -= Math.PI * 2;
+  } else if (angleDelta < -Math.PI) {
+    angleDelta += Math.PI * 2;
+  }
+
+  const totalAngle = remainingAngle + angleDelta;
+  const movement = totalAngle > 0 ? Math.floor(totalAngle / anglePerStep) : Math.ceil(totalAngle / anglePerStep);
+  return {
+    movement,
+    remainingAngle: totalAngle - movement * anglePerStep
+  };
+}
+
+export function createPlaybackQueue(tracks, selectedTrackId = tracks[0]?.id) {
+  const orderedTracks = sortAlbumTracks(tracks);
+  if (!orderedTracks.length) {
+    return { queue: [], queueIndex: -1, selectedTrack: null };
+  }
+
+  const selectedIndex = orderedTracks.findIndex(track => track.id === selectedTrackId);
+  const queueIndex = selectedIndex >= 0 ? selectedIndex : 0;
+  return {
+    queue: orderedTracks.map(track => track.id),
+    queueIndex,
+    selectedTrack: orderedTracks[queueIndex]
+  };
+}
+
+export function getQueueTransportIndex(currentIndex, queueLength, direction) {
+  const nextIndex = currentIndex + direction;
+  if (currentIndex < 0 || nextIndex < 0 || nextIndex >= queueLength) {
+    return -1;
+  }
+
+  return nextIndex;
+}
