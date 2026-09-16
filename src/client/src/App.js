@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import AsyncSelect from "react-select/async";
 import "./App.css";
 import { buildChartData } from "./chartData";
 import { API_BASE_URL } from "./config";
@@ -17,6 +18,12 @@ import {
   getWheelMove,
   groupAlbumsForArtist
 } from "./ipodBrowser";
+import {
+  buildMobileAlbumOptions,
+  buildMobileArtistOptions,
+  buildMobileSongOptions,
+  loadMobileOptions
+} from "./mobileBrowse";
 const numberFormatter = new Intl.NumberFormat();
 const PHONE_MEDIA_QUERY = "(max-width: 700px)";
 const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
@@ -27,6 +34,8 @@ const IPOD_FAST_SCROLL_ENTER_SPEED = 0.008;
 const IPOD_FAST_SCROLL_EXIT_SPEED = 0.005;
 const IPOD_FAST_SCROLL_OVERLAY_TIMEOUT_MS = 420;
 const IPOD_FAST_SCROLL_ANGLE_PER_LETTER = Math.PI / 6;
+const MOBILE_ASYNC_OPTION_LIMIT = 60;
+const MOBILE_ASYNC_OPTION_DELAY_MS = 140;
 
 function formatCount(value) {
   return numberFormatter.format(Math.round(Number(value) || 0));
@@ -80,6 +89,54 @@ function getArtistJumpKey(value) {
   const match = trimmedValue.match(/[A-Z]/);
   return match ? match[0] : null;
 }
+
+const mobileAsyncSelectStyles = {
+  control: (base, state) => ({
+    ...base,
+    minHeight: 48,
+    borderRadius: 12,
+    borderColor: state.isFocused ? "#38bdf8" : "#334155",
+    background: "#0f172a",
+    boxShadow: state.isFocused ? "0 0 0 1px #38bdf8" : "none"
+  }),
+  valueContainer: base => ({
+    ...base,
+    padding: "8px 12px"
+  }),
+  input: base => ({
+    ...base,
+    color: "#e5e7eb"
+  }),
+  singleValue: base => ({
+    ...base,
+    color: "#e5e7eb"
+  }),
+  placeholder: base => ({
+    ...base,
+    color: "#94a3b8"
+  }),
+  menu: base => ({
+    ...base,
+    background: "#0f172a",
+    border: "1px solid #334155",
+    borderRadius: 12,
+    overflow: "hidden"
+  }),
+  option: (base, state) => ({
+    ...base,
+    background: state.isFocused ? "#1e293b" : "#0f172a",
+    color: "#e5e7eb",
+    padding: "12px"
+  }),
+  noOptionsMessage: base => ({
+    ...base,
+    color: "#94a3b8"
+  }),
+  loadingMessage: base => ({
+    ...base,
+    color: "#94a3b8"
+  })
+};
 
 function AlbumArt({ trackId, size = "medium" }) {
   const [failed, setFailed] = useState(false);
@@ -527,6 +584,9 @@ function App() {
   });
   const [showPhoneStats, setShowPhoneStats] = useState(false);
   const [phonePage, setPhonePage] = useState("browser");
+  const [mobileArtistOption, setMobileArtistOption] = useState(null);
+  const [mobileAlbumOption, setMobileAlbumOption] = useState(null);
+  const [mobileSongOption, setMobileSongOption] = useState(null);
   const [ipodArtist, setIpodArtist] = useState(null);
   const [ipodAlbum, setIpodAlbum] = useState(null);
   const [ipodSelectionIndex, setIpodSelectionIndex] = useState(0);
@@ -906,6 +966,95 @@ function App() {
       track => track.album === selectedFilter.value.album && track.artist === selectedFilter.value.artist
     );
   }, [library.tracks, selectedFilter]);
+  const mobileArtistOptions = useMemo(() => buildMobileArtistOptions(library.browse.artists), [library.browse.artists]);
+  const mobileAlbumOptions = useMemo(() => {
+    if (!mobileArtistOption?.value) {
+      return [];
+    }
+
+    return buildMobileAlbumOptions(library.tracks, mobileArtistOption.value);
+  }, [library.tracks, mobileArtistOption]);
+  const mobileSongOptions = useMemo(() => {
+    if (!mobileArtistOption?.value || !mobileAlbumOption?.value) {
+      return [];
+    }
+
+    return buildMobileSongOptions(library.tracks, mobileArtistOption.value, mobileAlbumOption.value);
+  }, [library.tracks, mobileArtistOption, mobileAlbumOption]);
+
+  const loadMobileArtistOptions = useCallback(
+    inputValue =>
+      loadMobileOptions(mobileArtistOptions, inputValue, {
+        delayMs: MOBILE_ASYNC_OPTION_DELAY_MS,
+        limit: MOBILE_ASYNC_OPTION_LIMIT
+      }),
+    [mobileArtistOptions]
+  );
+  const loadMobileAlbumOptions = useCallback(
+    inputValue =>
+      loadMobileOptions(mobileAlbumOptions, inputValue, {
+        delayMs: MOBILE_ASYNC_OPTION_DELAY_MS,
+        limit: MOBILE_ASYNC_OPTION_LIMIT
+      }),
+    [mobileAlbumOptions]
+  );
+  const loadMobileSongOptions = useCallback(
+    inputValue =>
+      loadMobileOptions(mobileSongOptions, inputValue, {
+        delayMs: MOBILE_ASYNC_OPTION_DELAY_MS,
+        limit: MOBILE_ASYNC_OPTION_LIMIT
+      }),
+    [mobileSongOptions]
+  );
+
+  function handleMobileArtistChange(option) {
+    setMobileArtistOption(option || null);
+    setMobileAlbumOption(null);
+    setMobileSongOption(null);
+    setSearchQuery("");
+    if (!option?.value) {
+      setSelectedFilter(null);
+      return;
+    }
+
+    showArtistFilter(option.value);
+  }
+
+  function handleMobileAlbumChange(option) {
+    setMobileAlbumOption(option || null);
+    setMobileSongOption(null);
+    setSearchQuery("");
+    if (!option?.value || !mobileArtistOption?.value) {
+      if (mobileArtistOption?.value) {
+        showArtistFilter(mobileArtistOption.value);
+      } else {
+        setSelectedFilter(null);
+      }
+      return;
+    }
+
+    showAlbumFilter(option.value, mobileArtistOption.value);
+  }
+
+  function handleMobileSongChange(option) {
+    setMobileSongOption(option || null);
+    if (!option?.value || !mobileArtistOption?.value || !mobileAlbumOption?.value) {
+      return;
+    }
+
+    playQueueTracks(
+      library.tracks.filter(track => track.artist === mobileArtistOption.value && track.album === mobileAlbumOption.value),
+      option.value
+    );
+  }
+
+  function resetMobileBrowseSelection() {
+    setMobileArtistOption(null);
+    setMobileAlbumOption(null);
+    setMobileSongOption(null);
+    setSearchQuery("");
+    setSelectedFilter(null);
+  }
 
   const chartData = useMemo(() => {
     return buildChartData(stats);
@@ -945,6 +1094,12 @@ function App() {
       setSelectedTrack(null);
     }
   }, [filteredTracks, selectedTrack]);
+
+  useEffect(() => {
+    if (isPhoneMode && phonePage !== "browser") {
+      setPhonePage("browser");
+    }
+  }, [isPhoneMode, phonePage]);
 
   useEffect(() => {
     if (browseMode !== "artists") {
@@ -1129,23 +1284,6 @@ function App() {
         </div>
       </header>
 
-      {isPhoneMode && (
-        <div className="browser-tabs phone-page-tabs" aria-label="Phone view mode">
-          <button
-            className={phonePage === "browser" ? "tab active" : "tab"}
-            onClick={() => setPhonePage("browser")}
-          >
-            Library
-          </button>
-          <button
-            className={phonePage === "ipod" ? "tab active" : "tab"}
-            onClick={() => setPhonePage("ipod")}
-          >
-            iPod Dial
-          </button>
-        </div>
-      )}
-
       {(!isPhoneMode || showPhoneStats) && (
         <>
           <section className="cards">
@@ -1229,22 +1367,98 @@ function App() {
               Search across tracks, artists, albums, genres, and years, then play directly in the browser.
             </p>
           </div>
-          <div className={isPhoneMode ? "browser-search" : "browser-search browser-search-prominent"}>
-            <label className="browser-search-label" htmlFor="library-search">
-              Search your library
-            </label>
-            {!isPhoneMode && (
+          {isPhoneMode ? (
+            <div className="mobile-async-browser">
+              <h3>Quick mobile browse</h3>
+              <p className="panel-note">Search artists, then albums, then songs to play immediately.</p>
+              <div className="mobile-async-fields">
+                <label className="browser-search-label" htmlFor="mobile-artist-search">
+                  Artist
+                </label>
+                <AsyncSelect
+                  inputId="mobile-artist-search"
+                  cacheOptions
+                  defaultOptions={mobileArtistOptions.slice(0, MOBILE_ASYNC_OPTION_LIMIT)}
+                  loadOptions={loadMobileArtistOptions}
+                  value={mobileArtistOption}
+                  onChange={handleMobileArtistChange}
+                  placeholder="Search artist..."
+                  isClearable
+                  styles={mobileAsyncSelectStyles}
+                  loadingMessage={() => "Loading artists..."}
+                  noOptionsMessage={({ inputValue }) =>
+                    inputValue.trim() ? "No artists match that search." : "Type to search artists."
+                  }
+                />
+                <label className="browser-search-label" htmlFor="mobile-album-search">
+                  Album
+                </label>
+                <AsyncSelect
+                  inputId="mobile-album-search"
+                  cacheOptions
+                  defaultOptions={mobileAlbumOptions.slice(0, MOBILE_ASYNC_OPTION_LIMIT)}
+                  loadOptions={loadMobileAlbumOptions}
+                  value={mobileAlbumOption}
+                  onChange={handleMobileAlbumChange}
+                  placeholder={mobileArtistOption ? "Search album..." : "Select an artist first"}
+                  isDisabled={!mobileArtistOption}
+                  isClearable
+                  styles={mobileAsyncSelectStyles}
+                  loadingMessage={() => "Loading albums..."}
+                  noOptionsMessage={({ inputValue }) => {
+                    if (!mobileArtistOption) {
+                      return "Select an artist first.";
+                    }
+
+                    return inputValue.trim() ? "No albums match that search." : "Type to search albums.";
+                  }}
+                />
+                <label className="browser-search-label" htmlFor="mobile-song-search">
+                  Song
+                </label>
+                <AsyncSelect
+                  inputId="mobile-song-search"
+                  cacheOptions
+                  defaultOptions={mobileSongOptions.slice(0, MOBILE_ASYNC_OPTION_LIMIT)}
+                  loadOptions={loadMobileSongOptions}
+                  value={mobileSongOption}
+                  onChange={handleMobileSongChange}
+                  placeholder={mobileAlbumOption ? "Search song..." : "Select an album first"}
+                  isDisabled={!mobileAlbumOption}
+                  isClearable
+                  styles={mobileAsyncSelectStyles}
+                  loadingMessage={() => "Loading songs..."}
+                  noOptionsMessage={({ inputValue }) => {
+                    if (!mobileAlbumOption) {
+                      return "Select an album first.";
+                    }
+
+                    return inputValue.trim() ? "No songs match that search." : "Type to search songs.";
+                  }}
+                />
+              </div>
+              <div className="mobile-async-actions">
+                <button type="button" className="tab clear-tab" onClick={resetMobileBrowseSelection}>
+                  Reset mobile search
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="browser-search browser-search-prominent">
+              <label className="browser-search-label" htmlFor="library-search">
+                Search your library
+              </label>
               <p className="panel-note">Jump straight to tracks, artists, albums, genres, or years from one spot.</p>
-            )}
-            <input
-              id="library-search"
-              className={isPhoneMode ? "search-input" : "search-input search-input-prominent"}
-              type="search"
-              value={searchQuery}
-              onChange={event => setSearchQuery(event.target.value)}
-              placeholder="Artist, album, song, genre, or year"
-            />
-          </div>
+              <input
+                id="library-search"
+                className="search-input search-input-prominent"
+                type="search"
+                value={searchQuery}
+                onChange={event => setSearchQuery(event.target.value)}
+                placeholder="Artist, album, song, genre, or year"
+              />
+            </div>
+          )}
         </div>
 
         <div className="browser-tabs">

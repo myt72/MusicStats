@@ -177,6 +177,30 @@
   padding: 12px 14px;
 }
 
+.mobile-async-browser {
+  width: 100%;
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.1), rgba(56, 189, 248, 0.12));
+}
+
+.mobile-async-browser h3 {
+  margin: 0;
+}
+
+.mobile-async-fields {
+  display: grid;
+  gap: 8px;
+}
+
+.mobile-async-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .browser-tabs {
   display: flex;
   flex-wrap: wrap;
