@@ -77,3 +77,31 @@ test("computeStats applies artist aliases across artists, albums, and tracks", (
   );
   assert.ok(stats.tracks.every(track => track.artist === "Smashing Pumpkins"));
 });
+
+test("computeStats prefers canonical folder artist when metadata variant is unmapped", () => {
+  const stats = computeStats(
+    [
+      baseTrack({
+        title: "Split Metadata",
+        artist: "Smashing Pumpkins (Live)",
+        artistFolder: "Smashing Pumpkins",
+        album: "Siamese Dream"
+      }),
+      baseTrack({
+        title: "Canonical Track",
+        artist: "Smashing Pumpkins",
+        artistFolder: "Smashing Pumpkins",
+        album: "Siamese Dream"
+      })
+    ],
+    {
+      artistAliases: {
+        "The Smashing Pumpkins": "Smashing Pumpkins"
+      }
+    }
+  );
+
+  assert.strictEqual(stats.artists.filter(entry => entry.artist === "Smashing Pumpkins").length, 1);
+  assert.strictEqual(stats.albums.filter(album => album.artist === "Smashing Pumpkins").length, 1);
+  assert.ok(stats.tracks.every(track => track.artist === "Smashing Pumpkins"));
+});
