@@ -15,6 +15,11 @@ function formatHours(value) {
   return numberFormatter.format(Math.round(Number(value) || 0));
 }
 
+function formatUnitCount(value, singular, plural = `${singular}s`) {
+  const count = Math.round(Number(value) || 0);
+  return `${formatCount(count)} ${count === 1 ? singular : plural}`;
+}
+
 function formatDuration(seconds) {
   const totalMinutes = Math.max(0, Math.round((Number(seconds) || 0) / 60));
   const hours = Math.floor(totalMinutes / 60);
@@ -160,6 +165,7 @@ function IpodBrowser({
 
   useEffect(() => {
     const selectedNode = listRef.current?.querySelector(`[data-ipod-index="${selectedIndex}"]`);
+    selectedNode?.focus({ preventScroll: true });
     selectedNode?.scrollIntoView({ block: "nearest" });
   }, [items, selectedIndex]);
 
@@ -171,13 +177,38 @@ function IpodBrowser({
             <span>{breadcrumb}</span>
             <strong>{title}</strong>
           </div>
-          <ul className="ipod-list" ref={listRef}>
+          <ul className="ipod-list" ref={listRef} role="listbox" aria-label={title}>
             {items.map((item, index) => (
               <li key={item.id}>
                 <button
                   type="button"
                   data-ipod-index={index}
                   className={index === selectedIndex ? "ipod-list-item active" : "ipod-list-item"}
+                  tabIndex={index === selectedIndex ? 0 : -1}
+                  role="option"
+                  aria-selected={index === selectedIndex}
+                  onFocus={() => onSelectIndex(index)}
+                  onKeyDown={event => {
+                    if (event.key === "ArrowUp") {
+                      event.preventDefault();
+                      onMove(-1);
+                    } else if (event.key === "ArrowDown") {
+                      event.preventDefault();
+                      onMove(1);
+                    } else if (event.key === "Home") {
+                      event.preventDefault();
+                      onSelectIndex(0);
+                    } else if (event.key === "End") {
+                      event.preventDefault();
+                      onSelectIndex(Math.max(items.length - 1, 0));
+                    } else if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      onActivate(index);
+                    } else if (event.key === "Backspace" || event.key === "Escape") {
+                      event.preventDefault();
+                      onBack();
+                    }
+                  }}
                   onClick={() => {
                     onSelectIndex(index);
                     onActivate(index);
@@ -695,7 +726,7 @@ function App() {
         items: library.browse.artists.map(item => ({
           id: `artist-${item.artist}`,
           label: item.artist,
-          meta: `${formatCount(item.albumCount || 0)} albums`
+          meta: formatUnitCount(item.albumCount || 0, "album")
         }))
       };
     }
@@ -724,6 +755,10 @@ function App() {
   }, [ipodAlbum, ipodAlbums, ipodArtist, ipodSongs, library.browse.artists]);
 
   useEffect(() => {
+    setIpodSelectionIndex(0);
+  }, [ipodAlbum, ipodArtist]);
+
+  useEffect(() => {
     setIpodSelectionIndex(currentIndex => {
       if (!ipodView.items.length) {
         return 0;
@@ -731,23 +766,22 @@ function App() {
 
       return Math.min(currentIndex, ipodView.items.length - 1);
     });
-  }, [ipodView.items]);
+  }, [ipodView.items.length]);
 
   useEffect(() => {
     if (!isPhoneMode) {
       setPhonePage("browser");
+      setIpodArtist(null);
+      setIpodAlbum(null);
+      setIpodSelectionIndex(0);
     }
   }, [isPhoneMode]);
 
   useEffect(() => {
-    if (isPhoneMode && phonePage === "ipod") {
-      return;
-    }
-
     if (selectedTrack && !filteredTracks.some(track => track.id === selectedTrack.id)) {
       setSelectedTrack(null);
     }
-  }, [filteredTracks, isPhoneMode, phonePage, selectedTrack]);
+  }, [filteredTracks, selectedTrack]);
 
   useEffect(() => {
     if (browseMode !== "artists") {
@@ -994,7 +1028,7 @@ function App() {
               items={chartData.artistsByAlbumCount}
               labelForItem={item => item.artist}
               valueForItem={item => item.albumCount || 0}
-              valueLabel={value => `${formatCount(value)} albums`}
+              valueLabel={value => formatUnitCount(value, "album")}
             />
             <ChartCard
               title="Top Albums"

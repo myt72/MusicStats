@@ -538,6 +538,13 @@
   color: #eff6ff;
 }
 
+.ipod-list-item:focus-visible,
+.ipod-wheel-button:focus-visible,
+.ipod-wheel-center:focus-visible {
+  outline: 2px solid #0f172a;
+  outline-offset: 2px;
+}
+
 .ipod-item-label {
   font-weight: 700;
 }
