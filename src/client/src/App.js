@@ -291,7 +291,8 @@ function IpodBrowser({
             aria-label="Previous song"
             disabled={!canPlayPrevious}
           >
-            ◀◀
+            <span aria-hidden="true">◀◀</span>
+            <span className="sr-only">Previous song</span>
           </button>
           <button
             type="button"
@@ -300,7 +301,8 @@ function IpodBrowser({
             aria-label="Next song"
             disabled={!canPlayNext}
           >
-            ▶▶
+            <span aria-hidden="true">▶▶</span>
+            <span className="sr-only">Next song</span>
           </button>
           <button
             type="button"
@@ -934,6 +936,10 @@ function App() {
       return;
     }
 
+    setIpodArtist(null);
+    setIpodAlbum(null);
+    setIpodSelectionIndex(0);
+    setSelectedFilter(null);
     setPhonePage("browser");
   }
 
