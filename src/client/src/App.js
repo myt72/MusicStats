@@ -141,6 +141,8 @@ function IpodBrowser({
   const listRef = useRef(null);
   const wheelRef = useRef(null);
   const wheelPointerStateRef = useRef({ pointerId: null, lastAngle: null, remainingAngle: 0 });
+  const wheelInteractiveSelector =
+    "button, [href], input, select, textarea, [role='button'], [tabindex]:not([tabindex='-1'])";
 
   function focusItem(index) {
     const nextNode = listRef.current?.querySelector(`[data-ipod-index="${index}"]`);
@@ -165,7 +167,7 @@ function IpodBrowser({
       return;
     }
 
-    if (event.target.closest("button")) {
+    if (event.target.closest(wheelInteractiveSelector)) {
       return;
     }
 
