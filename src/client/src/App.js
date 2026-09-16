@@ -63,6 +63,31 @@ function sortAlbumTracks(tracks) {
   });
 }
 
+function groupAlbumsForArtist(tracks, artist) {
+  const artistTracks = tracks.filter(track => track.artist === artist);
+  const albumMap = new Map();
+  for (const track of artistTracks) {
+    const albumKey = track.album;
+    if (!albumMap.has(albumKey)) {
+      albumMap.set(albumKey, {
+        album: track.album,
+        artist: track.artist,
+        trackCount: 0,
+        artTrackId: track.albumArtTrackId || track.id,
+        tracks: []
+      });
+    }
+
+    const albumEntry = albumMap.get(albumKey);
+    albumEntry.trackCount += 1;
+    albumEntry.tracks.push(track);
+  }
+
+  return [...albumMap.values()]
+    .map(album => ({ ...album, tracks: sortAlbumTracks(album.tracks) }))
+    .sort((left, right) => left.album.localeCompare(right.album));
+}
+
 function getArtistJumpKey(value) {
   const trimmedValue = String(value || "").trim().toUpperCase();
   const match = trimmedValue.match(/[A-Z]/);
@@ -91,8 +116,8 @@ function AlbumArt({ trackId, size = "medium" }) {
   );
 }
 
-function ChartCard({ title, items, labelForItem }) {
-  const maxValue = items[0]?.trackCount || 1;
+function ChartCard({ title, items, labelForItem, valueForItem = item => item.trackCount, valueLabel = formatCount }) {
+  const maxValue = valueForItem(items[0] || {}) || 1;
 
   return (
     <div className="panel chart-panel">
@@ -100,7 +125,8 @@ function ChartCard({ title, items, labelForItem }) {
       <div className="chart">
         {items.map(item => {
           const label = labelForItem(item);
-          const width = Math.max((item.trackCount / maxValue) * 100, 8);
+          const value = valueForItem(item);
+          const width = Math.max((value / maxValue) * 100, 8);
 
           return (
             <div className="chart-row" key={`${title}-${label}`}>
@@ -109,13 +135,103 @@ function ChartCard({ title, items, labelForItem }) {
               </div>
               <div className="chart-bar-wrap">
                 <div className="chart-bar" style={{ width: `${width}%` }} />
-                <span className="chart-value">{formatCount(item.trackCount)}</span>
+                <span className="chart-value">{valueLabel(value)}</span>
               </div>
             </div>
           );
         })}
       </div>
     </div>
+  );
+}
+
+function IpodBrowser({
+  title,
+  breadcrumb,
+  items,
+  selectedIndex,
+  onSelectIndex,
+  onActivate,
+  onBack,
+  onMove,
+  selectedTrack
+}) {
+  const listRef = useRef(null);
+
+  useEffect(() => {
+    const selectedNode = listRef.current?.querySelector(`[data-ipod-index="${selectedIndex}"]`);
+    selectedNode?.scrollIntoView({ block: "nearest" });
+  }, [items, selectedIndex]);
+
+  return (
+    <section className="browser panel ipod-browser">
+      <div className="ipod-shell">
+        <div className="ipod-screen">
+          <div className="ipod-screen-header">
+            <span>{breadcrumb}</span>
+            <strong>{title}</strong>
+          </div>
+          <ul className="ipod-list" ref={listRef}>
+            {items.map((item, index) => (
+              <li key={item.id}>
+                <button
+                  type="button"
+                  data-ipod-index={index}
+                  className={index === selectedIndex ? "ipod-list-item active" : "ipod-list-item"}
+                  onClick={() => {
+                    onSelectIndex(index);
+                    onActivate(index);
+                  }}
+                >
+                  <span className="ipod-item-label">{item.label}</span>
+                  <span className="ipod-item-meta">{item.meta}</span>
+                </button>
+              </li>
+            ))}
+            {!items.length && <li className="ipod-empty">No items available.</li>}
+          </ul>
+          {selectedTrack && (
+            <div className="ipod-now-playing">
+              <span>Now playing</span>
+              <strong>{selectedTrack.title}</strong>
+              <span>{selectedTrack.artist}</span>
+            </div>
+          )}
+        </div>
+        <div className="ipod-wheel" aria-label="iPod-style navigation wheel">
+          <button type="button" className="ipod-wheel-button ipod-wheel-menu" onClick={onBack}>
+            Menu
+          </button>
+          <button
+            type="button"
+            className="ipod-wheel-button ipod-wheel-up"
+            onClick={() => onMove(-1)}
+            aria-label="Scroll up"
+          >
+            ▲
+          </button>
+          <button
+            type="button"
+            className="ipod-wheel-button ipod-wheel-right"
+            onClick={() => onActivate(selectedIndex)}
+            aria-label="Select highlighted item"
+          >
+            ▶
+          </button>
+          <button
+            type="button"
+            className="ipod-wheel-button ipod-wheel-down"
+            onClick={() => onMove(1)}
+            aria-label="Scroll down"
+          >
+            ▼
+          </button>
+          <button type="button" className="ipod-wheel-center" onClick={() => onActivate(selectedIndex)}>
+            Select
+          </button>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -174,6 +290,10 @@ function App() {
     return window.matchMedia(PHONE_MEDIA_QUERY).matches;
   });
   const [showPhoneStats, setShowPhoneStats] = useState(false);
+  const [phonePage, setPhonePage] = useState("browser");
+  const [ipodArtist, setIpodArtist] = useState(null);
+  const [ipodAlbum, setIpodAlbum] = useState(null);
+  const [ipodSelectionIndex, setIpodSelectionIndex] = useState(0);
 
   async function loadData() {
     try {
@@ -426,6 +546,26 @@ function App() {
     });
   }
 
+  function showArtistFilter(artist) {
+    setSelectedFilter({ type: "artist", value: artist });
+    setArtistViewMode("albums");
+  }
+
+  function showAlbumFilter(album, artist) {
+    setSelectedFilter({ type: "album", value: { album, artist } });
+    setArtistViewMode("tracks");
+  }
+
+  function showGenreFilter(genre) {
+    setSelectedFilter({ type: "genre", value: genre });
+    setArtistViewMode("tracks");
+  }
+
+  function showYearFilter(year) {
+    setSelectedFilter({ type: "year", value: year });
+    setArtistViewMode("tracks");
+  }
+
   const browseItems = useMemo(() => {
     return library.browse[browseMode] || [];
   }, [browseMode, library]);
@@ -494,28 +634,7 @@ function App() {
       return [];
     }
 
-    const artistTracks = library.tracks.filter(track => track.artist === selectedFilter.value);
-    const albumMap = new Map();
-    for (const track of artistTracks) {
-      const albumKey = track.album;
-      if (!albumMap.has(albumKey)) {
-        albumMap.set(albumKey, {
-          album: track.album,
-          artist: track.artist,
-          trackCount: 0,
-          artTrackId: track.albumArtTrackId || track.id,
-          tracks: []
-        });
-      }
-
-      const albumEntry = albumMap.get(albumKey);
-      albumEntry.trackCount += 1;
-      albumEntry.tracks.push(track);
-    }
-
-    return [...albumMap.values()]
-      .map(album => ({ ...album, tracks: sortAlbumTracks(album.tracks) }))
-      .sort((left, right) => left.album.localeCompare(right.album));
+    return groupAlbumsForArtist(library.tracks, selectedFilter.value);
   }, [library.tracks, selectedFilter]);
   const selectedAlbumTracks = useMemo(() => {
     if (selectedFilter?.type !== "album") {
@@ -529,22 +648,106 @@ function App() {
 
   const chartData = useMemo(() => {
     if (!stats) {
-      return { artists: [], albums: [], genres: [], years: [] };
+      return { artists: [], albums: [], artistsByAlbumCount: [], genres: [], years: [] };
     }
 
     return {
       artists: stats.artists.slice(0, 10),
+      artistsByAlbumCount: [...stats.artists]
+        .sort((left, right) => {
+          if ((right.albumCount || 0) !== (left.albumCount || 0)) {
+            return (right.albumCount || 0) - (left.albumCount || 0);
+          }
+
+          if (right.trackCount !== left.trackCount) {
+            return right.trackCount - left.trackCount;
+          }
+
+          return left.artist.localeCompare(right.artist);
+        })
+        .slice(0, 10),
       albums: stats.albums.slice(0, 10),
       genres: stats.genres.slice(0, 10),
       years: [...stats.years].sort((left, right) => right.trackCount - left.trackCount).slice(0, 10)
     };
   }, [stats]);
+  const ipodAlbums = useMemo(() => {
+    if (!ipodArtist) {
+      return [];
+    }
+
+    return groupAlbumsForArtist(library.tracks, ipodArtist);
+  }, [ipodArtist, library.tracks]);
+  const ipodSongs = useMemo(() => {
+    if (!ipodArtist || !ipodAlbum) {
+      return [];
+    }
+
+    return sortAlbumTracks(
+      library.tracks.filter(track => track.artist === ipodArtist && track.album === ipodAlbum)
+    );
+  }, [ipodAlbum, ipodArtist, library.tracks]);
+  const ipodView = useMemo(() => {
+    if (!ipodArtist) {
+      return {
+        title: "Artists",
+        breadcrumb: "Music",
+        items: library.browse.artists.map(item => ({
+          id: `artist-${item.artist}`,
+          label: item.artist,
+          meta: `${formatCount(item.albumCount || 0)} albums`
+        }))
+      };
+    }
+
+    if (!ipodAlbum) {
+      return {
+        title: "Albums",
+        breadcrumb: ipodArtist,
+        items: ipodAlbums.map(item => ({
+          id: `album-${item.artist}-${item.album}`,
+          label: item.album,
+          meta: `${formatCount(item.trackCount)} tracks`
+        }))
+      };
+    }
+
+    return {
+      title: "Songs",
+      breadcrumb: `${ipodArtist} • ${ipodAlbum}`,
+      items: ipodSongs.map((item, index) => ({
+        id: item.id,
+        label: `${formatCount(index + 1)}. ${item.title}`,
+        meta: formatDuration(item.durationSeconds)
+      }))
+    };
+  }, [ipodAlbum, ipodAlbums, ipodArtist, ipodSongs, library.browse.artists]);
 
   useEffect(() => {
+    setIpodSelectionIndex(currentIndex => {
+      if (!ipodView.items.length) {
+        return 0;
+      }
+
+      return Math.min(currentIndex, ipodView.items.length - 1);
+    });
+  }, [ipodView.items]);
+
+  useEffect(() => {
+    if (!isPhoneMode) {
+      setPhonePage("browser");
+    }
+  }, [isPhoneMode]);
+
+  useEffect(() => {
+    if (isPhoneMode && phonePage === "ipod") {
+      return;
+    }
+
     if (selectedTrack && !filteredTracks.some(track => track.id === selectedTrack.id)) {
       setSelectedTrack(null);
     }
-  }, [filteredTracks, selectedTrack]);
+  }, [filteredTracks, isPhoneMode, phonePage, selectedTrack]);
 
   useEffect(() => {
     if (browseMode !== "artists") {
@@ -633,6 +836,81 @@ function App() {
     enabledButtons[boundedIndex].focus();
   }
 
+  function moveIpodSelection(direction) {
+    setIpodSelectionIndex(currentIndex => {
+      if (!ipodView.items.length) {
+        return 0;
+      }
+
+      const nextIndex = currentIndex + direction;
+      if (nextIndex < 0) {
+        return 0;
+      }
+
+      if (nextIndex >= ipodView.items.length) {
+        return ipodView.items.length - 1;
+      }
+
+      return nextIndex;
+    });
+  }
+
+  function activateIpodItem(index = ipodSelectionIndex) {
+    if (!ipodView.items.length) {
+      return;
+    }
+
+    const targetIndex = Math.min(Math.max(index, 0), ipodView.items.length - 1);
+
+    if (!ipodArtist) {
+      const nextArtist = library.browse.artists[targetIndex];
+      if (!nextArtist) {
+        return;
+      }
+
+      setIpodArtist(nextArtist.artist);
+      setIpodAlbum(null);
+      setIpodSelectionIndex(0);
+      showArtistFilter(nextArtist.artist);
+      return;
+    }
+
+    if (!ipodAlbum) {
+      const nextAlbum = ipodAlbums[targetIndex];
+      if (!nextAlbum) {
+        return;
+      }
+
+      setIpodAlbum(nextAlbum.album);
+      setIpodSelectionIndex(0);
+      showAlbumFilter(nextAlbum.album, nextAlbum.artist);
+      return;
+    }
+
+    const nextTrack = ipodSongs[targetIndex];
+    if (!nextTrack) {
+      return;
+    }
+
+    showAlbumFilter(nextTrack.album, nextTrack.artist);
+    playTrack(nextTrack);
+  }
+
+  function goBackIpodLevel() {
+    if (ipodAlbum) {
+      setIpodAlbum(null);
+      setIpodSelectionIndex(0);
+      showArtistFilter(ipodArtist);
+      return;
+    }
+
+    if (ipodArtist) {
+      setIpodArtist(null);
+      setIpodSelectionIndex(0);
+      setSelectedFilter(null);
+    }
+  }
+
   if (loading) {
     return <div className="app">Loading...</div>;
   }
@@ -671,6 +949,23 @@ function App() {
         </div>
       </header>
 
+      {isPhoneMode && (
+        <div className="browser-tabs phone-page-tabs">
+          <button className={phonePage === "browser" ? "tab active" : "tab"} onClick={() => setPhonePage("browser")}>
+            Library
+          </button>
+          <button
+            className={phonePage === "ipod" ? "tab active" : "tab"}
+            onClick={() => {
+              setPhonePage("ipod");
+              setSearchQuery("");
+            }}
+          >
+            iPod Dial
+          </button>
+        </div>
+      )}
+
       {(!isPhoneMode || showPhoneStats) && (
         <>
           <section className="cards">
@@ -695,6 +990,13 @@ function App() {
           <section className="grid charts-grid">
             <ChartCard title="Top Artists" items={chartData.artists} labelForItem={item => item.artist} />
             <ChartCard
+              title="Most Albums Per Artist"
+              items={chartData.artistsByAlbumCount}
+              labelForItem={item => item.artist}
+              valueForItem={item => item.albumCount || 0}
+              valueLabel={value => `${formatCount(value)} albums`}
+            />
+            <ChartCard
               title="Top Albums"
               items={chartData.albums}
               labelForItem={item => `${item.album} (${item.artist})`}
@@ -705,7 +1007,38 @@ function App() {
         </>
       )}
 
-      <section className="browser panel">
+      {isPhoneMode && phonePage === "ipod" ? (
+        <>
+          <IpodBrowser
+            title={ipodView.title}
+            breadcrumb={ipodView.breadcrumb}
+            items={ipodView.items}
+            selectedIndex={ipodSelectionIndex}
+            onSelectIndex={setIpodSelectionIndex}
+            onActivate={activateIpodItem}
+            onBack={goBackIpodLevel}
+            onMove={moveIpodSelection}
+            selectedTrack={selectedTrack}
+          />
+          <section className="panel ipod-player-panel">
+            {selectedTrack ? (
+              <audio
+                key={selectedTrack.id}
+                ref={handleAudioRef}
+                className="audio-player"
+                controls
+                autoPlay
+                onLoadedMetadata={event => applyPreferredOutput(event.currentTarget)}
+                onEnded={handleAudioEnded}
+                src={`${API_BASE_URL}/tracks/${selectedTrack.id}/stream`}
+              />
+            ) : (
+              <p className="panel-note">Select a song from the iPod dial browser to play it.</p>
+            )}
+          </section>
+        </>
+      ) : (
+        <section className="browser panel">
         <div className="browser-header">
           <div>
             <h2>Music Browser</h2>
@@ -713,13 +1046,22 @@ function App() {
               Search across tracks, artists, albums, genres, and years, then play directly in the browser.
             </p>
           </div>
-          <input
-            className="search-input"
-            type="search"
-            value={searchQuery}
-            onChange={event => setSearchQuery(event.target.value)}
-            placeholder="Search your library"
-          />
+          <div className={isPhoneMode ? "browser-search" : "browser-search browser-search-prominent"}>
+            <label className="browser-search-label" htmlFor="library-search">
+              Search your library
+            </label>
+            {!isPhoneMode && (
+              <p className="panel-note">Jump straight to tracks, artists, albums, genres, or years from one spot.</p>
+            )}
+            <input
+              id="library-search"
+              className={isPhoneMode ? "search-input" : "search-input search-input-prominent"}
+              type="search"
+              value={searchQuery}
+              onChange={event => setSearchQuery(event.target.value)}
+              placeholder="Artist, album, song, genre, or year"
+            />
+          </div>
         </div>
 
         <div className="browser-tabs">
@@ -772,17 +1114,13 @@ function App() {
                         className={isSelected ? "browse-item active" : "browse-item"}
                         onClick={() => {
                           if (browseMode === "artists") {
-                            setSelectedFilter({ type: "artist", value: item.artist });
-                            setArtistViewMode("albums");
+                            showArtistFilter(item.artist);
                           } else if (browseMode === "albums") {
-                            setSelectedFilter({ type: "album", value: { album: item.album, artist: item.artist } });
-                            setArtistViewMode("tracks");
+                            showAlbumFilter(item.album, item.artist);
                           } else if (browseMode === "genres") {
-                            setSelectedFilter({ type: "genre", value: item.genre });
-                            setArtistViewMode("tracks");
+                            showGenreFilter(item.genre);
                           } else {
-                            setSelectedFilter({ type: "year", value: item.year });
-                            setArtistViewMode("tracks");
+                            showYearFilter(item.year);
                           }
                         }}
                       >
@@ -877,8 +1215,7 @@ function App() {
                           type="button"
                           className="browse-item"
                           onClick={() => {
-                            setSelectedFilter({ type: "album", value: { album: album.album, artist: album.artist } });
-                            setArtistViewMode("tracks");
+                            showAlbumFilter(album.album, album.artist);
                           }}
                         >
                           <span>{album.album}</span>
@@ -950,7 +1287,8 @@ function App() {
             </div>
           </div>
         </div>
-      </section>
+        </section>
+      )}
 
     </div>
   );
