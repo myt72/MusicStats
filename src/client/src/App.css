@@ -200,6 +200,7 @@
 }
 
 .mobile-library-pane,
+.mobile-output-pane,
 .mobile-now-playing-panel,
 .mobile-search-results {
   display: grid;
@@ -274,6 +275,15 @@
 .mobile-search-section {
   display: grid;
   gap: 8px;
+}
+
+.mobile-output-summary {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid #334155;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.54);
 }
 
 .mobile-now-playing-hero {

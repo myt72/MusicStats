@@ -23,7 +23,7 @@ import {
   buildMobileTrackList,
   searchMobileLibrary
 } from "./mobileBrowse";
-import { getPreferredBrowserOutputId, prioritizeBrowserOutput } from "./outputDevices";
+import { getPreferredBrowserOutputId, hasPlaybackOutputControls, prioritizeBrowserOutput } from "./outputDevices";
 const numberFormatter = new Intl.NumberFormat();
 const PHONE_MEDIA_QUERY = "(max-width: 700px)";
 const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
@@ -493,7 +493,7 @@ function PlaybackOutputPanel({
   remotePlaybackError
 }) {
   const canRenderExplicitOutputPicker = outputSelectionSupported && browserOutputTargets.length > 0;
-  if (!canRenderExplicitOutputPicker && !remotePlaybackPromptSupported) {
+  if (!hasPlaybackOutputControls(outputSelectionSupported, remotePlaybackPromptSupported, browserOutputTargets)) {
     return null;
   }
 
@@ -1037,10 +1037,27 @@ function App() {
     : mobileArtist
       ? mobileBrowseAlbums.length === 0
       : mobileBrowseArtists.length === 0;
+  const mobileOutputControlsAvailable = hasPlaybackOutputControls(
+    outputSelectionSupported,
+    remotePlaybackPromptSupported,
+    browserOutputTargets
+  );
+  const mobileTabs = [
+    ["library", "Library"],
+    ["search", "Search"],
+    ["now-playing", "Now Playing"],
+    ...(mobileOutputControlsAvailable ? [["output", "Output"]] : [])
+  ];
   const selectedBrowserOutputId = useMemo(
     () => getPreferredBrowserOutputId(defaultOutputIds, browserOutputTargets, BUILT_IN_OUTPUT_ID),
     [browserOutputTargets, defaultOutputIds]
   );
+
+  useEffect(() => {
+    if (mobilePage === "output" && !mobileOutputControlsAvailable) {
+      setMobilePage("now-playing");
+    }
+  }, [mobileOutputControlsAvailable, mobilePage]);
 
   function openMobileArtist(artist) {
     setMobileArtist(artist);
@@ -1367,11 +1384,7 @@ function App() {
           {isPhoneMode ? (
             <div className="mobile-library-browser">
               <div className="mobile-browser-tabs" role="tablist" aria-label="Phone music views">
-                {[
-                  ["library", "Library"],
-                  ["search", "Search"],
-                  ["now-playing", "Now Playing"]
-                ].map(([mode, label]) => (
+                {mobileTabs.map(([mode, label]) => (
                   <button
                     key={mode}
                     type="button"
@@ -1384,19 +1397,6 @@ function App() {
                   </button>
                 ))}
               </div>
-              <PlaybackOutputPanel
-                compact
-                selectId="mobile-playback-output"
-                selectedTrack={selectedTrack}
-                outputSelectionSupported={outputSelectionSupported}
-                remotePlaybackPromptSupported={remotePlaybackPromptSupported}
-                browserOutputTargets={browserOutputTargets}
-                selectedOutputId={selectedBrowserOutputId}
-                onOutputChange={handleBrowserOutputChange}
-                onOpenPlaybackTargetPicker={openPlaybackTargetPicker}
-                outputError={outputError}
-                remotePlaybackError={remotePlaybackError}
-              />
               {mobilePage === "library" ? (
                 <div className="mobile-library-pane">
                   <div className="mobile-library-header">
@@ -1599,6 +1599,39 @@ function App() {
                     </div>
                   )}
                 </div>
+              ) : mobilePage === "output" ? (
+                <div className="mobile-output-pane">
+                  <div className="mobile-library-header">
+                    <div>
+                      <h3>Choose playback output</h3>
+                      <p className="panel-note">Keep browsing on your phone while switching which speaker or device gets the stream.</p>
+                    </div>
+                    {selectedTrack && (
+                      <button type="button" className="tab" onClick={() => setMobilePage("now-playing")}>
+                        Now Playing
+                      </button>
+                    )}
+                  </div>
+                  {selectedTrack && (
+                    <div className="mobile-output-summary">
+                      <strong>{selectedTrack.title}</strong>
+                      <span className="mobile-list-meta">{selectedTrack.artist}</span>
+                    </div>
+                  )}
+                  <PlaybackOutputPanel
+                    compact
+                    selectId="mobile-playback-output"
+                    selectedTrack={selectedTrack}
+                    outputSelectionSupported={outputSelectionSupported}
+                    remotePlaybackPromptSupported={remotePlaybackPromptSupported}
+                    browserOutputTargets={browserOutputTargets}
+                    selectedOutputId={selectedBrowserOutputId}
+                    onOutputChange={handleBrowserOutputChange}
+                    onOpenPlaybackTargetPicker={openPlaybackTargetPicker}
+                    outputError={outputError}
+                    remotePlaybackError={remotePlaybackError}
+                  />
+                </div>
               ) : (
                 <div className="mobile-now-playing-panel">
                   <h3>Now playing</h3>
@@ -1624,6 +1657,11 @@ function App() {
                         <button type="button" className="tab" onClick={() => transportPlaybackQueue(1)} disabled={!canPlayNext}>
                           Next
                         </button>
+                        {mobileOutputControlsAvailable && (
+                          <button type="button" className="tab" onClick={() => setMobilePage("output")}>
+                            Output
+                          </button>
+                        )}
                         {mobileArtist && mobileAlbum && (
                           <button type="button" className="tab" onClick={() => setMobilePage("library")}>
                             Back to album
@@ -1646,6 +1684,11 @@ function App() {
                     </span>
                   </button>
                   <div className="mobile-action-row mobile-player-actions">
+                    {mobileOutputControlsAvailable && (
+                      <button type="button" className="tab" onClick={() => setMobilePage("output")}>
+                        Output
+                      </button>
+                    )}
                     <button type="button" className="tab" onClick={() => transportPlaybackQueue(-1)} disabled={!canPlayPrevious}>
                       ◀◀
                     </button>
