@@ -177,7 +177,7 @@
   padding: 12px 14px;
 }
 
-.mobile-async-browser {
+.mobile-library-browser {
   width: 100%;
   display: grid;
   gap: 10px;
@@ -187,17 +187,114 @@
   background: linear-gradient(135deg, rgba(34, 197, 94, 0.1), rgba(56, 189, 248, 0.12));
 }
 
-.mobile-async-browser h3 {
+.mobile-library-browser h3,
+.mobile-search-section h4 {
   margin: 0;
 }
 
-.mobile-async-fields {
+.mobile-browser-tabs,
+.mobile-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mobile-library-pane,
+.mobile-now-playing-panel,
+.mobile-search-results {
+  display: grid;
+  gap: 10px;
+}
+
+.mobile-library-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.mobile-library-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: grid;
   gap: 8px;
 }
 
-.mobile-async-actions {
+.mobile-list-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.mobile-list-row.active .mobile-list-button {
+  border-color: #38bdf8;
+  background: #172554;
+}
+
+.mobile-list-button,
+.mobile-player-summary {
+  width: 100%;
   display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid #334155;
+  border-radius: 14px;
+  background: #111827;
+  color: inherit;
+  padding: 10px 12px;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.mobile-list-leading {
+  min-width: 2ch;
+  color: #9ca3af;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.mobile-list-body {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.mobile-list-title {
+  font-weight: 700;
+}
+
+.mobile-list-meta {
+  color: #9ca3af;
+  font-size: 0.82rem;
+}
+
+.mobile-search-section {
+  display: grid;
+  gap: 8px;
+}
+
+.mobile-now-playing-hero {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.mobile-player-dock {
+  display: grid;
+  gap: 10px;
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.92);
+  box-shadow: 0 -10px 24px rgba(15, 23, 42, 0.22);
+}
+
+.mobile-player-actions {
   justify-content: flex-end;
 }
 
@@ -800,5 +897,12 @@
 
   .ipod-screen {
     width: 100%;
+  }
+
+  .mobile-library-header,
+  .mobile-now-playing-hero,
+  .mobile-list-button,
+  .mobile-player-summary {
+    align-items: flex-start;
   }
 }

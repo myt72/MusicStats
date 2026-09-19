@@ -1,6 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import AsyncSelect from "react-select/async";
-import { components as reactSelectComponents } from "react-select";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import { buildChartData } from "./chartData";
 import { API_BASE_URL } from "./config";
@@ -20,10 +18,10 @@ import {
   groupAlbumsForArtist
 } from "./ipodBrowser";
 import {
-  buildMobileAlbumOptions,
-  buildMobileArtistOptions,
-  buildMobileSongOptions,
-  loadMobileOptions
+  buildMobileAlbumList,
+  buildMobileArtistList,
+  buildMobileTrackList,
+  searchMobileLibrary
 } from "./mobileBrowse";
 import { getPreferredBrowserOutputId, prioritizeBrowserOutput } from "./outputDevices";
 const numberFormatter = new Intl.NumberFormat();
@@ -36,8 +34,7 @@ const IPOD_FAST_SCROLL_ENTER_SPEED = 0.008;
 const IPOD_FAST_SCROLL_EXIT_SPEED = 0.005;
 const IPOD_FAST_SCROLL_OVERLAY_TIMEOUT_MS = 420;
 const IPOD_FAST_SCROLL_ANGLE_PER_LETTER = Math.PI / 6;
-const MOBILE_ASYNC_OPTION_LIMIT = 60;
-const MOBILE_ASYNC_OPTION_DELAY_MS = 140;
+const MOBILE_SEARCH_TRACK_LIMIT = 40;
 
 function formatCount(value) {
   return numberFormatter.format(Math.round(Number(value) || 0));
@@ -90,68 +87,6 @@ function getArtistJumpKey(value) {
   const trimmedValue = String(value || "").trim().toUpperCase();
   const match = trimmedValue.match(/[A-Z]/);
   return match ? match[0] : null;
-}
-
-const mobileAsyncSelectStyles = {
-  control: (base, state) => ({
-    ...base,
-    minHeight: 48,
-    borderRadius: 12,
-    borderColor: state.isFocused ? "#38bdf8" : "#334155",
-    background: "#0f172a",
-    boxShadow: state.isFocused ? "0 0 0 1px #38bdf8" : "none"
-  }),
-  valueContainer: base => ({
-    ...base,
-    padding: "8px 12px"
-  }),
-  input: base => ({
-    ...base,
-    color: "#e5e7eb"
-  }),
-  singleValue: base => ({
-    ...base,
-    color: "#e5e7eb"
-  }),
-  placeholder: base => ({
-    ...base,
-    color: "#94a3b8"
-  }),
-  menu: base => ({
-    ...base,
-    background: "#0f172a",
-    border: "1px solid #334155",
-    borderRadius: 12,
-    overflow: "hidden"
-  }),
-  option: (base, state) => ({
-    ...base,
-    background: state.isFocused ? "#1e293b" : "#0f172a",
-    color: "#e5e7eb",
-    padding: "12px"
-  }),
-  noOptionsMessage: base => ({
-    ...base,
-    color: "#94a3b8"
-  }),
-  loadingMessage: base => ({
-    ...base,
-    color: "#94a3b8"
-  })
-};
-
-function createAsyncInputComponents(descriptionId) {
-  return {
-    Input: props => (
-      <reactSelectComponents.Input
-        {...props}
-        innerProps={{
-          ...props.innerProps,
-          "aria-describedby": descriptionId
-        }}
-      />
-    )
-  };
 }
 
 function AlbumArt({ trackId, size = "medium" }) {
@@ -673,9 +608,11 @@ function App() {
     return window.matchMedia(PHONE_MEDIA_QUERY).matches;
   });
   const [showPhoneStats, setShowPhoneStats] = useState(false);
-  const [mobileArtistOption, setMobileArtistOption] = useState(null);
-  const [mobileAlbumOption, setMobileAlbumOption] = useState(null);
-  const [mobileSongOption, setMobileSongOption] = useState(null);
+  const [mobilePage, setMobilePage] = useState("library");
+  const [mobileArtist, setMobileArtist] = useState(null);
+  const [mobileAlbum, setMobileAlbum] = useState(null);
+  const [mobileBrowseQuery, setMobileBrowseQuery] = useState("");
+  const [mobileSearchQuery, setMobileSearchQuery] = useState("");
   const [ipodArtist, setIpodArtist] = useState(null);
   const [ipodAlbum, setIpodAlbum] = useState(null);
   const [ipodSelectionIndex, setIpodSelectionIndex] = useState(0);
@@ -1053,107 +990,100 @@ function App() {
       track => track.album === selectedFilter.value.album && track.artist === selectedFilter.value.artist
     );
   }, [library.tracks, selectedFilter]);
-  const mobileArtistOptions = useMemo(() => buildMobileArtistOptions(library.browse.artists), [library.browse.artists]);
-  const mobileAlbumOptions = useMemo(() => {
-    if (!mobileArtistOption?.value) {
+  const mobileArtists = useMemo(() => buildMobileArtistList(library.browse.artists), [library.browse.artists]);
+  const mobileAlbumsForArtist = useMemo(() => {
+    if (!mobileArtist) {
       return [];
     }
 
-    return buildMobileAlbumOptions(library.tracks, mobileArtistOption.value);
-  }, [library.tracks, mobileArtistOption]);
-  const mobileSelectedAlbumTracks = useMemo(() => {
-    if (!mobileArtistOption?.value || !mobileAlbumOption?.value) {
+    return buildMobileAlbumList(library.tracks, mobileArtist);
+  }, [library.tracks, mobileArtist]);
+  const mobileAlbumTracks = useMemo(
+    () => buildMobileTrackList(library.tracks, { artist: mobileArtist, album: mobileAlbum, query: mobileBrowseQuery }),
+    [library.tracks, mobileArtist, mobileAlbum, mobileBrowseQuery]
+  );
+  const mobileBrowseArtists = useMemo(() => {
+    const normalizedQuery = mobileBrowseQuery.trim().toLowerCase();
+    if (!normalizedQuery || mobileArtist) {
+      return mobileArtists;
+    }
+
+    return mobileArtists.filter(item => item.label.toLowerCase().includes(normalizedQuery));
+  }, [mobileArtist, mobileArtists, mobileBrowseQuery]);
+  const mobileBrowseAlbums = useMemo(() => {
+    if (!mobileArtist) {
       return [];
     }
 
-    return library.tracks.filter(
-      track => track.artist === mobileArtistOption.value && track.album === mobileAlbumOption.value
-    );
-  }, [library.tracks, mobileArtistOption, mobileAlbumOption]);
-  const mobileSongOptions = useMemo(() => {
-    if (!mobileSelectedAlbumTracks.length || !mobileArtistOption?.value || !mobileAlbumOption?.value) {
-      return [];
+    const normalizedQuery = mobileBrowseQuery.trim().toLowerCase();
+    if (!normalizedQuery || mobileAlbum) {
+      return mobileAlbumsForArtist;
     }
 
-    return buildMobileSongOptions(mobileSelectedAlbumTracks, mobileArtistOption.value, mobileAlbumOption.value);
-  }, [mobileSelectedAlbumTracks, mobileArtistOption, mobileAlbumOption]);
-  const mobileArtistSelectComponents = useMemo(() => createAsyncInputComponents("mobile-artist-help"), []);
-  const mobileAlbumSelectComponents = useMemo(() => createAsyncInputComponents("mobile-album-help"), []);
-  const mobileSongSelectComponents = useMemo(() => createAsyncInputComponents("mobile-song-help"), []);
-
-  const loadMobileArtistOptions = useCallback(
-    inputValue =>
-      loadMobileOptions(mobileArtistOptions, inputValue, {
-        delayMs: MOBILE_ASYNC_OPTION_DELAY_MS,
-        limit: MOBILE_ASYNC_OPTION_LIMIT
-      }),
-    [mobileArtistOptions]
+    return mobileAlbumsForArtist.filter(item => `${item.album} ${item.artist}`.toLowerCase().includes(normalizedQuery));
+  }, [mobileAlbum, mobileAlbumsForArtist, mobileArtist, mobileBrowseQuery]);
+  const mobileSearchResults = useMemo(
+    () => searchMobileLibrary(library.tracks, mobileSearchQuery, { trackLimit: MOBILE_SEARCH_TRACK_LIMIT }),
+    [library.tracks, mobileSearchQuery]
   );
-  const loadMobileAlbumOptions = useCallback(
-    inputValue =>
-      loadMobileOptions(mobileAlbumOptions, inputValue, {
-        delayMs: MOBILE_ASYNC_OPTION_DELAY_MS,
-        limit: MOBILE_ASYNC_OPTION_LIMIT
-      }),
-    [mobileAlbumOptions]
+  const selectedMobileAlbumTracks = useMemo(
+    () => buildMobileTrackList(library.tracks, { artist: mobileArtist, album: mobileAlbum }),
+    [library.tracks, mobileArtist, mobileAlbum]
   );
-  const loadMobileSongOptions = useCallback(
-    inputValue =>
-      loadMobileOptions(mobileSongOptions, inputValue, {
-        delayMs: MOBILE_ASYNC_OPTION_DELAY_MS,
-        limit: MOBILE_ASYNC_OPTION_LIMIT
-      }),
-    [mobileSongOptions]
-  );
+  const canPlayPrevious = getQueueTransportIndex(queueIndex, playbackQueue.length, -1) >= 0;
+  const canPlayNext = getQueueTransportIndex(queueIndex, playbackQueue.length, 1) >= 0;
+  const isMobileBrowseEmpty = mobileAlbum
+    ? mobileAlbumTracks.length === 0
+    : mobileArtist
+      ? mobileBrowseAlbums.length === 0
+      : mobileBrowseArtists.length === 0;
   const selectedBrowserOutputId = useMemo(
     () => getPreferredBrowserOutputId(defaultOutputIds, browserOutputTargets, BUILT_IN_OUTPUT_ID),
     [browserOutputTargets, defaultOutputIds]
   );
 
-  function handleMobileArtistChange(option) {
-    setMobileArtistOption(option || null);
-    setMobileAlbumOption(null);
-    setMobileSongOption(null);
-    setSearchQuery("");
-    if (!option?.value) {
-      setSelectedFilter(null);
+  function openMobileArtist(artist) {
+    setMobileArtist(artist);
+    setMobileAlbum(null);
+    setMobileBrowseQuery("");
+    setMobilePage("library");
+  }
+
+  function openMobileAlbum(album, artist = mobileArtist) {
+    setMobileArtist(artist);
+    setMobileAlbum(album);
+    setMobileBrowseQuery("");
+    setMobilePage("library");
+  }
+
+  function stepBackMobileBrowse() {
+    if (mobileAlbum) {
+      setMobileAlbum(null);
+      setMobileBrowseQuery("");
       return;
     }
 
-    showArtistFilter(option.value);
+    if (mobileArtist) {
+      setMobileArtist(null);
+      setMobileBrowseQuery("");
+    }
   }
 
-  function handleMobileAlbumChange(option) {
-    setMobileAlbumOption(option || null);
-    setMobileSongOption(null);
-    setSearchQuery("");
-    if (!option?.value || !mobileArtistOption?.value) {
-      if (mobileArtistOption?.value) {
-        showArtistFilter(mobileArtistOption.value);
-      } else {
-        setSelectedFilter(null);
-      }
+  function playMobileAlbum(trackId = null) {
+    if (!selectedMobileAlbumTracks.length) {
       return;
     }
 
-    showAlbumFilter(option.value, mobileArtistOption.value);
+    playQueueTracks(selectedMobileAlbumTracks, trackId);
+    setMobilePage("now-playing");
   }
 
-  function handleMobileSongChange(option) {
-    setMobileSongOption(option || null);
-    if (!option?.value || !mobileArtistOption?.value || !mobileAlbumOption?.value) {
-      return;
-    }
-
-    playQueueTracks(mobileSelectedAlbumTracks, option.value);
-  }
-
-  function resetMobileBrowseSelection() {
-    setMobileArtistOption(null);
-    setMobileAlbumOption(null);
-    setMobileSongOption(null);
-    setSearchQuery("");
-    setSelectedFilter(null);
+  function playMobileTrack(track) {
+    const albumTracks = buildMobileTrackList(library.tracks, { artist: track.artist, album: track.album });
+    playQueueTracks(albumTracks, track.id);
+    setMobileArtist(track.artist);
+    setMobileAlbum(track.album);
+    setMobilePage("now-playing");
   }
 
   function handleBrowserOutputChange(event) {
@@ -1427,17 +1357,33 @@ function App() {
       <section className="browser panel">
         <div className="browser-header">
           <div>
-            <h2>{isPhoneMode ? "Mobile Music Search" : "Music Browser"}</h2>
+            <h2>{isPhoneMode ? "Mobile Music Browser" : "Music Browser"}</h2>
             <p className="panel-note">
               {isPhoneMode
-                ? "Find music quickly with a touch-first search flow and start playback from the song picker."
+                ? "Browse artists, drill into albums, search the library, and jump between the library and now playing."
                 : "Search across tracks, artists, albums, genres, and years, then play directly in the browser."}
             </p>
           </div>
           {isPhoneMode ? (
-            <div className="mobile-async-browser">
-              <h3>Quick mobile browse</h3>
-              <p className="panel-note">Search artists, then albums, then songs to play immediately.</p>
+            <div className="mobile-library-browser">
+              <div className="mobile-browser-tabs" role="tablist" aria-label="Phone music views">
+                {[
+                  ["library", "Library"],
+                  ["search", "Search"],
+                  ["now-playing", "Now Playing"]
+                ].map(([mode, label]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    role="tab"
+                    aria-selected={mobilePage === mode}
+                    className={mobilePage === mode ? "tab active" : "tab"}
+                    onClick={() => setMobilePage(mode)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
               <PlaybackOutputPanel
                 compact
                 selectId="mobile-playback-output"
@@ -1451,98 +1397,276 @@ function App() {
                 outputError={outputError}
                 remotePlaybackError={remotePlaybackError}
               />
-              <div className="mobile-async-fields">
-                <label className="browser-search-label" htmlFor="mobile-artist-search">
-                  Artist
-                </label>
-                <AsyncSelect
-                  inputId="mobile-artist-search"
-                  components={mobileArtistSelectComponents}
-                  cacheOptions
-                  defaultOptions={mobileArtistOptions.slice(0, MOBILE_ASYNC_OPTION_LIMIT)}
-                  loadOptions={loadMobileArtistOptions}
-                  value={mobileArtistOption}
-                  onChange={handleMobileArtistChange}
-                  placeholder="Search artist..."
-                  isClearable
-                  styles={mobileAsyncSelectStyles}
-                  loadingMessage={() => "Loading artists..."}
-                  noOptionsMessage={({ inputValue }) => {
-                    const hasQuery = String(inputValue || "").trim().length > 0;
-                    return hasQuery ? "No artists match that search." : "No artists available.";
-                  }}
-                />
-                <p id="mobile-artist-help" className="panel-note">
-                  {mobileArtistOptions.length
-                    ? "Browse the default artist list or type to refine results."
-                    : "No artists are available in the scanned library yet."}
-                </p>
-                <label className="browser-search-label" htmlFor="mobile-album-search">
-                  Album
-                </label>
-                <AsyncSelect
-                  inputId="mobile-album-search"
-                  components={mobileAlbumSelectComponents}
-                  cacheOptions={false}
-                  defaultOptions={mobileAlbumOptions.slice(0, MOBILE_ASYNC_OPTION_LIMIT)}
-                  loadOptions={loadMobileAlbumOptions}
-                  value={mobileAlbumOption}
-                  onChange={handleMobileAlbumChange}
-                  placeholder={mobileArtistOption ? "Search album..." : "Select an artist first"}
-                  isDisabled={!mobileArtistOption}
-                  isClearable
-                  styles={mobileAsyncSelectStyles}
-                  loadingMessage={() => "Loading albums..."}
-                  noOptionsMessage={({ inputValue }) => {
-                    if (!mobileArtistOption) {
-                      return "Select an artist first.";
-                    }
-
-                    const hasQuery = String(inputValue || "").trim().length > 0;
-                    return hasQuery ? "No albums match that search." : "No albums available for this artist.";
-                  }}
-                />
-                <p id="mobile-album-help" className="panel-note">
-                  {mobileArtistOption
-                    ? "Select or search an album for the chosen artist."
-                    : "Choose an artist first to unlock album search."}
-                </p>
-                <label className="browser-search-label" htmlFor="mobile-song-search">
-                  Song
-                </label>
-                <AsyncSelect
-                  inputId="mobile-song-search"
-                  components={mobileSongSelectComponents}
-                  cacheOptions={false}
-                  defaultOptions={mobileSongOptions.slice(0, MOBILE_ASYNC_OPTION_LIMIT)}
-                  loadOptions={loadMobileSongOptions}
-                  value={mobileSongOption}
-                  onChange={handleMobileSongChange}
-                  placeholder={mobileAlbumOption ? "Search song..." : "Select an album first"}
-                  isDisabled={!mobileAlbumOption}
-                  isClearable
-                  styles={mobileAsyncSelectStyles}
-                  loadingMessage={() => "Loading songs..."}
-                  noOptionsMessage={({ inputValue }) => {
-                    if (!mobileAlbumOption) {
-                      return "Select an album first.";
-                    }
-
-                    const hasQuery = String(inputValue || "").trim().length > 0;
-                    return hasQuery ? "No songs match that search." : "No songs available for this album.";
-                  }}
-                />
-                <p id="mobile-song-help" className="panel-note">
-                  {mobileAlbumOption
-                    ? "Select a song to start playback immediately."
-                    : "Choose an album first to unlock song search."}
-                </p>
-              </div>
-              <div className="mobile-async-actions">
-                <button type="button" className="tab clear-tab" onClick={resetMobileBrowseSelection}>
-                  Reset mobile search
-                </button>
-              </div>
+              {mobilePage === "library" ? (
+                <div className="mobile-library-pane">
+                  <div className="mobile-library-header">
+                    <div>
+                      <h3>{mobileAlbum ? mobileAlbum : mobileArtist || "Artists"}</h3>
+                      <p className="panel-note">
+                        {mobileAlbum
+                          ? "Browse tracks in this album or start the full album queue."
+                          : mobileArtist
+                            ? "Browse albums for this artist with quick touch targets."
+                            : "Browse your artists list with a touch-first library flow."}
+                      </p>
+                    </div>
+                    {(mobileArtist || mobileAlbum) && (
+                      <button type="button" className="tab" onClick={stepBackMobileBrowse}>
+                        Back
+                      </button>
+                    )}
+                  </div>
+                  <label className="browser-search-label" htmlFor="mobile-browse-search">
+                    {mobileAlbum ? "Filter tracks" : mobileArtist ? "Filter albums" : "Filter artists"}
+                  </label>
+                  <input
+                    id="mobile-browse-search"
+                    className="search-input search-input-prominent"
+                    type="search"
+                    value={mobileBrowseQuery}
+                    onChange={event => setMobileBrowseQuery(event.target.value)}
+                    placeholder={mobileAlbum ? "Track title" : mobileArtist ? "Album title" : "Artist name"}
+                  />
+                  {mobileAlbum ? (
+                    <>
+                      <div className="mobile-action-row">
+                        <button type="button" className="tab active" onClick={() => playMobileAlbum()}>
+                          Play album ({formatCount(selectedMobileAlbumTracks.length)})
+                        </button>
+                      </div>
+                      <ul className="mobile-library-list">
+                        {mobileAlbumTracks.map((track, index) => (
+                          <li key={track.id} className={track.id === selectedTrack?.id ? "mobile-list-row active" : "mobile-list-row"}>
+                            <button
+                              type="button"
+                              className="mobile-list-button"
+                              onClick={() => playMobileAlbum(track.id)}
+                              aria-label={`Play ${track.title} by ${track.artist}`}
+                            >
+                              <span className="mobile-list-leading">{formatCount(index + 1)}</span>
+                              <span className="mobile-list-body">
+                                <span className="mobile-list-title">{track.title}</span>
+                                <span className="mobile-list-meta">
+                                  {track.artist}
+                                  <span className="sep">•</span>
+                                  {formatDuration(track.durationSeconds)}
+                                </span>
+                              </span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  ) : mobileArtist ? (
+                    <ul className="mobile-library-list">
+                      {mobileBrowseAlbums.map(album => (
+                        <li key={album.id} className="mobile-list-row">
+                          <button type="button" className="mobile-list-button" onClick={() => openMobileAlbum(album.album, album.artist)}>
+                            <AlbumArt trackId={album.albumArtTrackId} size="medium" />
+                            <span className="mobile-list-body">
+                              <span className="mobile-list-title">{album.album}</span>
+                              <span className="mobile-list-meta">{formatCount(album.trackCount)} tracks</span>
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            className="track-play-button"
+                            aria-label={`Play album ${album.album} by ${album.artist}`}
+                            onClick={() => {
+                              openMobileAlbum(album.album, album.artist);
+                              playQueueTracks(album.tracks);
+                              setMobilePage("now-playing");
+                            }}
+                          >
+                            ▶
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <ul className="mobile-library-list">
+                      {mobileBrowseArtists.map(artist => (
+                        <li key={artist.id} className="mobile-list-row">
+                          <button type="button" className="mobile-list-button" onClick={() => openMobileArtist(artist.artist)}>
+                            <span className="mobile-list-body">
+                              <span className="mobile-list-title">{artist.label}</span>
+                              <span className="mobile-list-meta">{formatCount(artist.trackCount)} tracks</span>
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {isMobileBrowseEmpty && <p className="panel-note">No items match this library filter yet.</p>}
+                </div>
+              ) : mobilePage === "search" ? (
+                <div className="mobile-library-pane">
+                  <h3>Search the library</h3>
+                  <p className="panel-note">Find artists, albums, and songs, then jump into playback or browsing.</p>
+                  <label className="browser-search-label" htmlFor="mobile-global-search">
+                    Search
+                  </label>
+                  <input
+                    id="mobile-global-search"
+                    className="search-input search-input-prominent"
+                    type="search"
+                    value={mobileSearchQuery}
+                    onChange={event => setMobileSearchQuery(event.target.value)}
+                    placeholder="Artist, album, song, genre, or year"
+                  />
+                  {!mobileSearchQuery.trim() ? (
+                    <p className="panel-note">Start typing to search across the full library.</p>
+                  ) : (
+                    <div className="mobile-search-results">
+                      {mobileSearchResults.artists.length > 0 && (
+                        <section className="mobile-search-section">
+                          <h4>Artists</h4>
+                          <ul className="mobile-library-list">
+                            {mobileSearchResults.artists.map(artist => (
+                              <li key={artist.id} className="mobile-list-row">
+                                <button
+                                  type="button"
+                                  className="mobile-list-button"
+                                  onClick={() => {
+                                    openMobileArtist(artist.artist);
+                                    setMobilePage("library");
+                                  }}
+                                >
+                                  <span className="mobile-list-body">
+                                    <span className="mobile-list-title">{artist.label}</span>
+                                    <span className="mobile-list-meta">{formatCount(artist.trackCount)} matching tracks</span>
+                                  </span>
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        </section>
+                      )}
+                      {mobileSearchResults.albums.length > 0 && (
+                        <section className="mobile-search-section">
+                          <h4>Albums</h4>
+                          <ul className="mobile-library-list">
+                            {mobileSearchResults.albums.map(album => (
+                              <li key={album.id} className="mobile-list-row">
+                                <button
+                                  type="button"
+                                  className="mobile-list-button"
+                                  onClick={() => {
+                                    openMobileAlbum(album.album, album.artist);
+                                    setMobilePage("library");
+                                  }}
+                                >
+                                  <AlbumArt trackId={album.albumArtTrackId} size="medium" />
+                                  <span className="mobile-list-body">
+                                    <span className="mobile-list-title">{album.album}</span>
+                                    <span className="mobile-list-meta">
+                                      {album.artist}
+                                      <span className="sep">•</span>
+                                      {formatCount(album.trackCount)} tracks
+                                    </span>
+                                  </span>
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        </section>
+                      )}
+                      {mobileSearchResults.tracks.length > 0 && (
+                        <section className="mobile-search-section">
+                          <h4>Tracks</h4>
+                          <ul className="mobile-library-list">
+                            {mobileSearchResults.tracks.map(track => (
+                              <li key={track.id} className={track.id === selectedTrack?.id ? "mobile-list-row active" : "mobile-list-row"}>
+                                <button type="button" className="mobile-list-button" onClick={() => playMobileTrack(track)}>
+                                  <AlbumArt trackId={track.albumArtTrackId || track.id} size="medium" />
+                                  <span className="mobile-list-body">
+                                    <span className="mobile-list-title">{track.title}</span>
+                                    <span className="mobile-list-meta">
+                                      {track.artist}
+                                      <span className="sep">•</span>
+                                      {track.album}
+                                    </span>
+                                  </span>
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        </section>
+                      )}
+                      {!mobileSearchResults.artists.length &&
+                        !mobileSearchResults.albums.length &&
+                        !mobileSearchResults.tracks.length && <p className="panel-note">No results matched that search.</p>}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="mobile-now-playing-panel">
+                  <h3>Now playing</h3>
+                  {selectedTrack ? (
+                    <>
+                      <div className="mobile-now-playing-hero">
+                        <AlbumArt trackId={selectedTrack.albumArtTrackId || selectedTrack.id} size="large" />
+                        <div>
+                          <strong>{selectedTrack.title}</strong>
+                          <div>{selectedTrack.artist}</div>
+                          <div className="panel-note">{selectedTrack.album}</div>
+                          {playbackQueue.length > 0 && (
+                            <div className="panel-note">
+                              Queue {formatCount(queueIndex + 1)} of {formatCount(playbackQueue.length)}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="mobile-action-row">
+                        <button type="button" className="tab" onClick={() => transportPlaybackQueue(-1)} disabled={!canPlayPrevious}>
+                          Previous
+                        </button>
+                        <button type="button" className="tab" onClick={() => transportPlaybackQueue(1)} disabled={!canPlayNext}>
+                          Next
+                        </button>
+                        {mobileArtist && mobileAlbum && (
+                          <button type="button" className="tab" onClick={() => setMobilePage("library")}>
+                            Back to album
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <p className="panel-note">Pick a track from the library or search tab to start playback.</p>
+                  )}
+                </div>
+              )}
+              {selectedTrack ? (
+                <div className="mobile-player-dock">
+                  <button type="button" className="mobile-player-summary" onClick={() => setMobilePage("now-playing")}>
+                    <AlbumArt trackId={selectedTrack.albumArtTrackId || selectedTrack.id} size="medium" />
+                    <span className="mobile-list-body">
+                      <span className="mobile-list-title">{selectedTrack.title}</span>
+                      <span className="mobile-list-meta">{selectedTrack.artist}</span>
+                    </span>
+                  </button>
+                  <div className="mobile-action-row mobile-player-actions">
+                    <button type="button" className="tab" onClick={() => transportPlaybackQueue(-1)} disabled={!canPlayPrevious}>
+                      ◀◀
+                    </button>
+                    <button type="button" className="tab" onClick={() => transportPlaybackQueue(1)} disabled={!canPlayNext}>
+                      ▶▶
+                    </button>
+                  </div>
+                  <audio
+                    key={selectedTrack.id}
+                    ref={handleAudioRef}
+                    className="audio-player"
+                    controls
+                    autoPlay
+                    onLoadedMetadata={event => applyPreferredOutput(event.currentTarget)}
+                    onEnded={handleAudioEnded}
+                    src={`${API_BASE_URL}/tracks/${selectedTrack.id}/stream`}
+                  />
+                </div>
+              ) : (
+                <p className="panel-note">Select a track to play.</p>
+              )}
             </div>
           ) : (
             <div className="browser-search browser-search-prominent">
@@ -1562,243 +1686,244 @@ function App() {
           )}
         </div>
 
-        <div className="browser-tabs">
-          {[
-            ["artists", "Artists"],
-            ["albums", "Albums"],
-            ["genres", "Genres"],
-            ["years", "Years"]
-          ].map(([mode, label]) => (
-            <button
-              key={mode}
-              className={mode === browseMode ? "tab active" : "tab"}
-              onClick={() => {
-                setBrowseMode(mode);
-                setSelectedFilter(null);
-              }}
-            >
-              {label}
-            </button>
-          ))}
-          {selectedFilter && (
-            <button className="tab clear-tab" onClick={() => setSelectedFilter(null)}>
-              Clear filter
-            </button>
-          )}
-        </div>
-        <div className="browser-layout">
-          <div className={showArtistJumpPicker ? "browser-list-shell" : undefined}>
-            <div className="browser-list" ref={browserListRef}>
-              <h3>Browse {browseMode}</h3>
-              <ul>
-                {filteredBrowseItems.map(item => {
-                  const label = getBrowseValue(item, browseMode);
-                  const isSelected =
-                    selectedFilter &&
-                    ((browseMode === "artists" && selectedFilter.type === "artist" && selectedFilter.value === item.artist) ||
-                      (browseMode === "albums" &&
-                        selectedFilter.type === "album" &&
-                        selectedFilter.value.album === item.album &&
-                        selectedFilter.value.artist === item.artist) ||
-                      (browseMode === "genres" &&
-                        selectedFilter.type === "genre" &&
-                        selectedFilter.value === item.genre) ||
-                      (browseMode === "years" && selectedFilter.type === "year" && selectedFilter.value === item.year));
-
-                  return (
-                    <li key={`${browseMode}-${label}`}>
-                      <button
-                        ref={browseMode === "artists" ? getArtistItemRefCallback(item.artist) : undefined}
-                        className={isSelected ? "browse-item active" : "browse-item"}
-                        onClick={() => {
-                          if (browseMode === "artists") {
-                            showArtistFilter(item.artist);
-                          } else if (browseMode === "albums") {
-                            showAlbumFilter(item.album, item.artist);
-                          } else if (browseMode === "genres") {
-                            showGenreFilter(item.genre);
-                          } else {
-                            showYearFilter(item.year);
-                          }
-                        }}
-                      >
-                        <span>{label}</span>
-                        <span className="browse-meta">{formatCount(item.trackCount)} tracks</span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
+        {!isPhoneMode && (
+          <>
+            <div className="browser-tabs">
+              {[
+                ["artists", "Artists"],
+                ["albums", "Albums"],
+                ["genres", "Genres"],
+                ["years", "Years"]
+              ].map(([mode, label]) => (
+                <button
+                  key={mode}
+                  className={mode === browseMode ? "tab active" : "tab"}
+                  onClick={() => {
+                    setBrowseMode(mode);
+                    setSelectedFilter(null);
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+              {selectedFilter && (
+                <button className="tab clear-tab" onClick={() => setSelectedFilter(null)}>
+                  Clear filter
+                </button>
+              )}
             </div>
-            {showArtistJumpPicker && (
-              <nav className="artist-jump-picker" aria-label="Jump to artist letter" ref={artistJumpPickerRef}>
-                {ALPHABET.map(letter => (
-                  <button
-                    key={letter}
-                    type="button"
-                    className="artist-jump-button"
-                    onClick={() => jumpToArtistLetter(letter)}
-                    onKeyDown={handleArtistJumpPickerKeyDown}
-                    disabled={!artistJumpTargets[letter]}
-                    aria-label={`Jump to artists starting with ${letter}`}
-                  >
-                    {letter}
-                  </button>
-                ))}
-              </nav>
-            )}
-          </div>
+            <div className="browser-layout">
+              <div className={showArtistJumpPicker ? "browser-list-shell" : undefined}>
+                <div className="browser-list" ref={browserListRef}>
+                  <h3>Browse {browseMode}</h3>
+                  <ul>
+                    {filteredBrowseItems.map(item => {
+                      const label = getBrowseValue(item, browseMode);
+                      const isSelected =
+                        selectedFilter &&
+                        ((browseMode === "artists" && selectedFilter.type === "artist" && selectedFilter.value === item.artist) ||
+                          (browseMode === "albums" &&
+                            selectedFilter.type === "album" &&
+                            selectedFilter.value.album === item.album &&
+                            selectedFilter.value.artist === item.artist) ||
+                          (browseMode === "genres" &&
+                            selectedFilter.type === "genre" &&
+                            selectedFilter.value === item.genre) ||
+                          (browseMode === "years" && selectedFilter.type === "year" && selectedFilter.value === item.year));
 
-          <div className="track-panel">
-            <div className="track-panel-header">
-              <div>
-                <h3>Tracks</h3>
-                <p className="panel-note">Showing {formatCount(filteredTracks.length)} tracks from the current browse/search view.</p>
-                {selectedFilter?.type === "artist" && (
-                  <div className="browser-tabs browser-subtabs">
-                    <button
-                      className={artistViewMode === "albums" ? "tab active" : "tab"}
-                      onClick={() => setArtistViewMode("albums")}
-                    >
-                      Albums
-                    </button>
-                    <button
-                      className={artistViewMode === "tracks" ? "tab active" : "tab"}
-                      onClick={() => setArtistViewMode("tracks")}
-                    >
-                      Tracks
-                    </button>
-                  </div>
-                )}
-                {selectedFilter?.type === "album" && (
-                  <button className="tab" onClick={() => playAlbumTracks(selectedAlbumTracks)}>
-                    Play album ({formatCount(selectedAlbumTracks.length)})
-                  </button>
+                      return (
+                        <li key={`${browseMode}-${label}`}>
+                          <button
+                            ref={browseMode === "artists" ? getArtistItemRefCallback(item.artist) : undefined}
+                            className={isSelected ? "browse-item active" : "browse-item"}
+                            onClick={() => {
+                              if (browseMode === "artists") {
+                                showArtistFilter(item.artist);
+                              } else if (browseMode === "albums") {
+                                showAlbumFilter(item.album, item.artist);
+                              } else if (browseMode === "genres") {
+                                showGenreFilter(item.genre);
+                              } else {
+                                showYearFilter(item.year);
+                              }
+                            }}
+                          >
+                            <span>{label}</span>
+                            <span className="browse-meta">{formatCount(item.trackCount)} tracks</span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+                {showArtistJumpPicker && (
+                  <nav className="artist-jump-picker" aria-label="Jump to artist letter" ref={artistJumpPickerRef}>
+                    {ALPHABET.map(letter => (
+                      <button
+                        key={letter}
+                        type="button"
+                        className="artist-jump-button"
+                        onClick={() => jumpToArtistLetter(letter)}
+                        onKeyDown={handleArtistJumpPickerKeyDown}
+                        disabled={!artistJumpTargets[letter]}
+                        aria-label={`Jump to artists starting with ${letter}`}
+                      >
+                        {letter}
+                      </button>
+                    ))}
+                  </nav>
                 )}
               </div>
-              {selectedTrack && (
-                <div className="now-playing">
-                  <AlbumArt trackId={selectedTrack.albumArtTrackId || selectedTrack.id} size="large" />
+              <div className="track-panel">
+                <div className="track-panel-header">
                   <div>
-                    <strong>{selectedTrack.title}</strong>
-                    <div>{selectedTrack.artist}</div>
-                    <div className="panel-note">{selectedTrack.album}</div>
+                    <h3>Tracks</h3>
+                    <p className="panel-note">Showing {formatCount(filteredTracks.length)} tracks from the current browse/search view.</p>
+                    {selectedFilter?.type === "artist" && (
+                      <div className="browser-tabs browser-subtabs">
+                        <button
+                          className={artistViewMode === "albums" ? "tab active" : "tab"}
+                          onClick={() => setArtistViewMode("albums")}
+                        >
+                          Albums
+                        </button>
+                        <button
+                          className={artistViewMode === "tracks" ? "tab active" : "tab"}
+                          onClick={() => setArtistViewMode("tracks")}
+                        >
+                          Tracks
+                        </button>
+                      </div>
+                    )}
+                    {selectedFilter?.type === "album" && (
+                      <button className="tab" onClick={() => playAlbumTracks(selectedAlbumTracks)}>
+                        Play album ({formatCount(selectedAlbumTracks.length)})
+                      </button>
+                    )}
                   </div>
+                  {selectedTrack && (
+                    <div className="now-playing">
+                      <AlbumArt trackId={selectedTrack.albumArtTrackId || selectedTrack.id} size="large" />
+                      <div>
+                        <strong>{selectedTrack.title}</strong>
+                        <div>{selectedTrack.artist}</div>
+                        <div className="panel-note">{selectedTrack.album}</div>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
 
-            {selectedTrack ? (
-              <audio
-                key={selectedTrack.id}
-                ref={handleAudioRef}
-                className="audio-player"
-                controls
-                autoPlay
-                onLoadedMetadata={event => applyPreferredOutput(event.currentTarget)}
-                onEnded={handleAudioEnded}
-                src={`${API_BASE_URL}/tracks/${selectedTrack.id}/stream`}
-              />
-            ) : (
-              <p className="panel-note">Select a track to play.</p>
-            )}
-            {!isPhoneMode && (
-              <PlaybackOutputPanel
-                selectId="desktop-playback-output"
-                selectedTrack={selectedTrack}
-                outputSelectionSupported={outputSelectionSupported}
-                remotePlaybackPromptSupported={remotePlaybackPromptSupported}
-                browserOutputTargets={browserOutputTargets}
-                selectedOutputId={selectedBrowserOutputId}
-                onOutputChange={handleBrowserOutputChange}
-                onOpenPlaybackTargetPicker={openPlaybackTargetPicker}
-                outputError={outputError}
-                remotePlaybackError={remotePlaybackError}
-              />
-            )}
+                {selectedTrack ? (
+                  <audio
+                    key={selectedTrack.id}
+                    ref={handleAudioRef}
+                    className="audio-player"
+                    controls
+                    autoPlay
+                    onLoadedMetadata={event => applyPreferredOutput(event.currentTarget)}
+                    onEnded={handleAudioEnded}
+                    src={`${API_BASE_URL}/tracks/${selectedTrack.id}/stream`}
+                  />
+                ) : (
+                  <p className="panel-note">Select a track to play.</p>
+                )}
+                <PlaybackOutputPanel
+                  selectId="desktop-playback-output"
+                  selectedTrack={selectedTrack}
+                  outputSelectionSupported={outputSelectionSupported}
+                  remotePlaybackPromptSupported={remotePlaybackPromptSupported}
+                  browserOutputTargets={browserOutputTargets}
+                  selectedOutputId={selectedBrowserOutputId}
+                  onOutputChange={handleBrowserOutputChange}
+                  onOpenPlaybackTargetPicker={openPlaybackTargetPicker}
+                  outputError={outputError}
+                  remotePlaybackError={remotePlaybackError}
+                />
 
-            <div className="track-list-grid">
-              {selectedFilter?.type === "artist" && artistViewMode === "albums" ? (
-                <ul className="artist-album-list">
-                  {selectedArtistAlbums.map(album => {
-                    return (
-                      <li key={`${album.artist}-${album.album}`} className="artist-album-row">
-                        <button
-                          type="button"
-                          className="browse-item"
-                          onClick={() => {
-                            showAlbumFilter(album.album, album.artist);
-                          }}
-                        >
-                          <span>{album.album}</span>
-                          <span className="browse-meta">{formatCount(album.trackCount)} tracks</span>
-                        </button>
-                        <button
-                          type="button"
-                          className="track-play-button"
-                          aria-label={`Play album ${album.album} by ${album.artist}`}
-                          onClick={() => playAlbumTracks(album.tracks)}
-                        >
-                          ▶
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              ) : (
-                <>
-                  <div className="track-list-header" aria-hidden="true">
-                    <span aria-hidden />
-                    <span>Track</span>
-                    <span>Artist</span>
-                    <span className="track-album-header">Album</span>
-                    <span>Length</span>
-                  </div>
-                  <ul className="track-list">
-                    {filteredTracks.map(track => (
-                      <li key={track.id} className={track.id === selectedTrack?.id ? "track-row active" : "track-row"}>
-                        <button
-                          type="button"
-                          className="track-row-button"
-                          onClick={() => playTrack(track)}
-                          title={`Play ${track.title}`}
-                          aria-label={`Select ${track.title} by ${track.artist}`}
-                        >
-                          <span>
-                            <AlbumArt trackId={track.albumArtTrackId || track.id} size="small" />
-                          </span>
-                          <span className="track-cell track-title" title={track.title}>
-                            {track.title}
-                          </span>
-                          <span className="track-cell" title={track.artist}>
-                            {track.artist}
-                          </span>
-                          <span className="track-cell track-album" title={track.album}>
-                            {track.album}
-                          </span>
-                          <span className="track-cell track-duration">
-                            {formatDuration(track.durationSeconds)}
-                          </span>
-                        </button>
-                        <button
-                          type="button"
-                          className="track-play-button"
-                          onClick={event => {
-                            event.stopPropagation();
-                            playTrack(track);
-                          }}
-                          aria-label={`Play ${track.title} by ${track.artist}`}
-                        >
-                          ▶
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              )}
+                <div className="track-list-grid">
+                  {selectedFilter?.type === "artist" && artistViewMode === "albums" ? (
+                    <ul className="artist-album-list">
+                      {selectedArtistAlbums.map(album => {
+                        return (
+                          <li key={`${album.artist}-${album.album}`} className="artist-album-row">
+                            <button
+                              type="button"
+                              className="browse-item"
+                              onClick={() => {
+                                showAlbumFilter(album.album, album.artist);
+                              }}
+                            >
+                              <span>{album.album}</span>
+                              <span className="browse-meta">{formatCount(album.trackCount)} tracks</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="track-play-button"
+                              aria-label={`Play album ${album.album} by ${album.artist}`}
+                              onClick={() => playAlbumTracks(album.tracks)}
+                            >
+                              ▶
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : (
+                    <>
+                      <div className="track-list-header" aria-hidden="true">
+                        <span aria-hidden />
+                        <span>Track</span>
+                        <span>Artist</span>
+                        <span className="track-album-header">Album</span>
+                        <span>Length</span>
+                      </div>
+                      <ul className="track-list">
+                        {filteredTracks.map(track => (
+                          <li key={track.id} className={track.id === selectedTrack?.id ? "track-row active" : "track-row"}>
+                            <button
+                              type="button"
+                              className="track-row-button"
+                              onClick={() => playTrack(track)}
+                              title={`Play ${track.title}`}
+                              aria-label={`Select ${track.title} by ${track.artist}`}
+                            >
+                              <span>
+                                <AlbumArt trackId={track.albumArtTrackId || track.id} size="small" />
+                              </span>
+                              <span className="track-cell track-title" title={track.title}>
+                                {track.title}
+                              </span>
+                              <span className="track-cell" title={track.artist}>
+                                {track.artist}
+                              </span>
+                              <span className="track-cell track-album" title={track.album}>
+                                {track.album}
+                              </span>
+                              <span className="track-cell track-duration">
+                                {formatDuration(track.durationSeconds)}
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              className="track-play-button"
+                              onClick={event => {
+                                event.stopPropagation();
+                                playTrack(track);
+                              }}
+                              aria-label={`Play ${track.title} by ${track.artist}`}
+                            >
+                              ▶
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
+          </>
+        )}
       </section>
 
     </div>
