@@ -22,3 +22,7 @@ export function prioritizeBrowserOutput(outputId, defaultOutputIds, browserOutpu
 
   return [outputId, ...currentDefaultOutputIds.filter(candidate => candidate !== outputId && validOutputIds.includes(candidate))];
 }
+
+export function hasPlaybackOutputControls(outputSelectionSupported, remotePlaybackPromptSupported, browserOutputTargets) {
+  return Boolean((outputSelectionSupported && browserOutputTargets.length > 0) || remotePlaybackPromptSupported);
+}
