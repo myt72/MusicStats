@@ -559,7 +559,6 @@ function App() {
   const artistItemRefs = useRef(new Map());
   const artistItemRefCallbacks = useRef(new Map());
   const artistJumpPickerRef = useRef(null);
-  const mobileArtistListRef = useRef(null);
   const mobileArtistItemRefs = useRef(new Map());
   const mobileArtistItemRefCallbacks = useRef(new Map());
   const mobileArtistJumpPickerRef = useRef(null);
@@ -616,6 +615,7 @@ function App() {
   const [mobileArtist, setMobileArtist] = useState(null);
   const [mobileAlbum, setMobileAlbum] = useState(null);
   const [mobileBrowseQuery, setMobileBrowseQuery] = useState("");
+  const [activeMobileArtistJumpLetter, setActiveMobileArtistJumpLetter] = useState(null);
   const [mobileSearchQuery, setMobileSearchQuery] = useState("");
   const [ipodArtist, setIpodArtist] = useState(null);
   const [ipodAlbum, setIpodAlbum] = useState(null);
@@ -1057,6 +1057,10 @@ function App() {
 
     return nextTargets;
   }, [mobileBrowseArtists, showMobileArtistJumpPicker]);
+  const firstMobileArtistJumpLetter = useMemo(
+    () => ALPHABET.find(letter => Boolean(mobileArtistJumpTargets[letter])) || null,
+    [mobileArtistJumpTargets]
+  );
   const mobileOutputControlsAvailable = hasPlaybackOutputControls(
     outputSelectionSupported,
     remotePlaybackPromptSupported,
@@ -1078,6 +1082,19 @@ function App() {
       setMobilePage("now-playing");
     }
   }, [mobileOutputControlsAvailable, mobilePage]);
+
+  useEffect(() => {
+    if (!showMobileArtistJumpPicker) {
+      setActiveMobileArtistJumpLetter(null);
+      return;
+    }
+
+    if (activeMobileArtistJumpLetter && mobileArtistJumpTargets[activeMobileArtistJumpLetter]) {
+      return;
+    }
+
+    setActiveMobileArtistJumpLetter(firstMobileArtistJumpLetter);
+  }, [activeMobileArtistJumpLetter, firstMobileArtistJumpLetter, mobileArtistJumpTargets, showMobileArtistJumpPicker]);
 
   function openMobileArtist(artist) {
     setMobileArtist(artist);
@@ -1288,6 +1305,7 @@ function App() {
     const fallbackIndex = direction > 0 ? 0 : enabledButtons.length - 1;
     const nextIndex = currentIndex >= 0 ? currentIndex + direction : fallbackIndex;
     const boundedIndex = Math.min(enabledButtons.length - 1, Math.max(0, nextIndex));
+    setActiveMobileArtistJumpLetter(enabledButtons[boundedIndex]?.dataset.letter || null);
     enabledButtons[boundedIndex].focus();
   }
 
@@ -1297,15 +1315,12 @@ function App() {
       return;
     }
 
-    const listNode = mobileArtistListRef.current;
     const targetNode = mobileArtistItemRefs.current.get(targetArtist);
-    if (!listNode || !targetNode) {
+    if (!targetNode) {
       return;
     }
 
-    const scrollTop =
-      targetNode.getBoundingClientRect().top - listNode.getBoundingClientRect().top + listNode.scrollTop;
-    listNode.scrollTo({ top: Math.max(0, scrollTop - 8), behavior: "smooth" });
+    targetNode.scrollIntoView({ block: "start", behavior: "smooth" });
   }
 
   function handleMobileArtistJumpPickerKeyDown(event) {
@@ -1598,12 +1613,11 @@ function App() {
                           : "mobile-artist-browser-shell"
                       }
                     >
-                      <div className="mobile-artist-list-scroller" ref={mobileArtistListRef}>
+                      <div className="mobile-artist-list-scroller">
                         <ul className="mobile-library-list">
                           {mobileBrowseArtists.map(artist => (
-                            <li key={artist.id} className="mobile-list-row">
+                            <li key={artist.id} ref={getMobileArtistItemRefCallback(artist.artist)} className="mobile-list-row">
                               <button
-                                ref={getMobileArtistItemRefCallback(artist.artist)}
                                 type="button"
                                 className="mobile-list-button"
                                 onClick={() => openMobileArtist(artist.artist)}
@@ -1628,9 +1642,15 @@ function App() {
                               key={letter}
                               type="button"
                               className="artist-jump-button"
-                              onClick={() => jumpToMobileArtistLetter(letter)}
+                              data-letter={letter}
+                              onClick={() => {
+                                setActiveMobileArtistJumpLetter(letter);
+                                jumpToMobileArtistLetter(letter);
+                              }}
                               onKeyDown={handleMobileArtistJumpPickerKeyDown}
+                              onFocus={() => setActiveMobileArtistJumpLetter(letter)}
                               disabled={!mobileArtistJumpTargets[letter]}
+                              tabIndex={letter === activeMobileArtistJumpLetter ? 0 : -1}
                               aria-label={`Jump to artists starting with ${letter}`}
                             >
                               {letter}

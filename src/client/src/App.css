@@ -234,8 +234,7 @@
 }
 
 .mobile-artist-list-scroller {
-  max-height: min(58vh, 32rem);
-  overflow: auto;
+  min-width: 0;
 }
 
 .mobile-list-row {
