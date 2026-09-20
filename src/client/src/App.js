@@ -559,6 +559,10 @@ function App() {
   const artistItemRefs = useRef(new Map());
   const artistItemRefCallbacks = useRef(new Map());
   const artistJumpPickerRef = useRef(null);
+  const mobileArtistListRef = useRef(null);
+  const mobileArtistItemRefs = useRef(new Map());
+  const mobileArtistItemRefCallbacks = useRef(new Map());
+  const mobileArtistJumpPickerRef = useRef(null);
   const [stats, setStats] = useState(null);
   const [library, setLibrary] = useState({
     browse: { artists: [], albums: [], genres: [], years: [] },
@@ -1037,6 +1041,22 @@ function App() {
     : mobileArtist
       ? mobileBrowseAlbums.length === 0
       : mobileBrowseArtists.length === 0;
+  const showMobileArtistJumpPicker = isPhoneMode && mobilePage === "library" && !mobileArtist && !mobileAlbum && mobileBrowseArtists.length > 0;
+  const mobileArtistJumpTargets = useMemo(() => {
+    if (!showMobileArtistJumpPicker) {
+      return {};
+    }
+
+    const nextTargets = {};
+    for (const artist of mobileBrowseArtists) {
+      const artistKey = getArtistJumpKey(artist.label);
+      if (artistKey && !nextTargets[artistKey]) {
+        nextTargets[artistKey] = artist.artist;
+      }
+    }
+
+    return nextTargets;
+  }, [mobileBrowseArtists, showMobileArtistJumpPicker]);
   const mobileOutputControlsAvailable = hasPlaybackOutputControls(
     outputSelectionSupported,
     remotePlaybackPromptSupported,
@@ -1169,6 +1189,27 @@ function App() {
     }
   }, [browseMode, filteredBrowseItems]);
 
+  useEffect(() => {
+    if (!showMobileArtistJumpPicker) {
+      mobileArtistItemRefs.current.clear();
+      mobileArtistItemRefCallbacks.current.clear();
+      return;
+    }
+
+    const visibleArtists = new Set(mobileBrowseArtists.map(item => item.artist));
+    for (const artist of mobileArtistItemRefs.current.keys()) {
+      if (!visibleArtists.has(artist)) {
+        mobileArtistItemRefs.current.delete(artist);
+      }
+    }
+
+    for (const artist of mobileArtistItemRefCallbacks.current.keys()) {
+      if (!visibleArtists.has(artist)) {
+        mobileArtistItemRefCallbacks.current.delete(artist);
+      }
+    }
+  }, [mobileBrowseArtists, showMobileArtistJumpPicker]);
+
   function getArtistItemRefCallback(artist) {
     if (!artistItemRefCallbacks.current.has(artist)) {
       artistItemRefCallbacks.current.set(artist, node => {
@@ -1182,6 +1223,21 @@ function App() {
     }
 
     return artistItemRefCallbacks.current.get(artist);
+  }
+
+  function getMobileArtistItemRefCallback(artist) {
+    if (!mobileArtistItemRefCallbacks.current.has(artist)) {
+      mobileArtistItemRefCallbacks.current.set(artist, node => {
+        if (node) {
+          mobileArtistItemRefs.current.set(artist, node);
+          return;
+        }
+
+        mobileArtistItemRefs.current.delete(artist);
+      });
+    }
+
+    return mobileArtistItemRefCallbacks.current.get(artist);
   }
 
   function jumpToArtistLetter(letter) {
@@ -1212,6 +1268,57 @@ function App() {
     }
 
     const enabledButtons = Array.from(artistJumpPickerRef.current.querySelectorAll("button:not(:disabled)"));
+    if (!enabledButtons.length) {
+      return;
+    }
+
+    event.preventDefault();
+    const currentIndex = enabledButtons.indexOf(event.currentTarget);
+    if (event.key === "Home") {
+      enabledButtons[0].focus();
+      return;
+    }
+
+    if (event.key === "End") {
+      enabledButtons[enabledButtons.length - 1].focus();
+      return;
+    }
+
+    const direction = event.key === "ArrowUp" ? -1 : 1;
+    const fallbackIndex = direction > 0 ? 0 : enabledButtons.length - 1;
+    const nextIndex = currentIndex >= 0 ? currentIndex + direction : fallbackIndex;
+    const boundedIndex = Math.min(enabledButtons.length - 1, Math.max(0, nextIndex));
+    enabledButtons[boundedIndex].focus();
+  }
+
+  function jumpToMobileArtistLetter(letter) {
+    const targetArtist = mobileArtistJumpTargets[letter];
+    if (!targetArtist) {
+      return;
+    }
+
+    const listNode = mobileArtistListRef.current;
+    const targetNode = mobileArtistItemRefs.current.get(targetArtist);
+    if (!listNode || !targetNode) {
+      return;
+    }
+
+    const scrollTop =
+      targetNode.getBoundingClientRect().top - listNode.getBoundingClientRect().top + listNode.scrollTop;
+    listNode.scrollTo({ top: Math.max(0, scrollTop - 8), behavior: "smooth" });
+  }
+
+  function handleMobileArtistJumpPickerKeyDown(event) {
+    if (!mobileArtistJumpPickerRef.current) {
+      return;
+    }
+
+    const supportedKeys = ["ArrowUp", "ArrowDown", "Home", "End"];
+    if (!supportedKeys.includes(event.key)) {
+      return;
+    }
+
+    const enabledButtons = Array.from(mobileArtistJumpPickerRef.current.querySelectorAll("button:not(:disabled)"));
     if (!enabledButtons.length) {
       return;
     }
@@ -1407,7 +1514,7 @@ function App() {
                           ? "Browse tracks in this album or start the full album queue."
                           : mobileArtist
                             ? "Browse albums for this artist with quick touch targets."
-                            : "Browse your artists list with a touch-first library flow."}
+                            : "Browse your artists list with quick filters and the alphabet jump rail."}
                       </p>
                     </div>
                     {(mobileArtist || mobileAlbum) && (
@@ -1484,18 +1591,54 @@ function App() {
                       ))}
                     </ul>
                   ) : (
-                    <ul className="mobile-library-list">
-                      {mobileBrowseArtists.map(artist => (
-                        <li key={artist.id} className="mobile-list-row">
-                          <button type="button" className="mobile-list-button" onClick={() => openMobileArtist(artist.artist)}>
-                            <span className="mobile-list-body">
-                              <span className="mobile-list-title">{artist.label}</span>
-                              <span className="mobile-list-meta">{formatCount(artist.trackCount)} tracks</span>
-                            </span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
+                    <div
+                      className={
+                        showMobileArtistJumpPicker
+                          ? "mobile-artist-browser-shell mobile-artist-browser-shell-indexed"
+                          : "mobile-artist-browser-shell"
+                      }
+                    >
+                      <div className="mobile-artist-list-scroller" ref={mobileArtistListRef}>
+                        <ul className="mobile-library-list">
+                          {mobileBrowseArtists.map(artist => (
+                            <li key={artist.id} className="mobile-list-row">
+                              <button
+                                ref={getMobileArtistItemRefCallback(artist.artist)}
+                                type="button"
+                                className="mobile-list-button"
+                                onClick={() => openMobileArtist(artist.artist)}
+                              >
+                                <span className="mobile-list-body">
+                                  <span className="mobile-list-title">{artist.label}</span>
+                                  <span className="mobile-list-meta">{formatCount(artist.trackCount)} tracks</span>
+                                </span>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                      {showMobileArtistJumpPicker && (
+                        <nav
+                          className="artist-jump-picker mobile-artist-jump-picker"
+                          aria-label="Jump to artist letter"
+                          ref={mobileArtistJumpPickerRef}
+                        >
+                          {ALPHABET.map(letter => (
+                            <button
+                              key={letter}
+                              type="button"
+                              className="artist-jump-button"
+                              onClick={() => jumpToMobileArtistLetter(letter)}
+                              onKeyDown={handleMobileArtistJumpPickerKeyDown}
+                              disabled={!mobileArtistJumpTargets[letter]}
+                              aria-label={`Jump to artists starting with ${letter}`}
+                            >
+                              {letter}
+                            </button>
+                          ))}
+                        </nav>
+                      )}
+                    </div>
                   )}
                   {isMobileBrowseEmpty && <p className="panel-note">No items match this library filter yet.</p>}
                 </div>
