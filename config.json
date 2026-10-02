@@ -2,7 +2,7 @@
   "musicRoot": "P:/Multimedia/Music/Artists",
   "cacheFile": "./src/server/cache.json",
   "enableOnlineLookup": false,
-  "jukeboxPlaylist": "",
+  "jukeboxPlaylist": "H:\Development\MusicStats\Jukebox.m3u",
   "specialRootFolders": ["_mp3", "_incoming"],
   "specialFolders": [
     {
