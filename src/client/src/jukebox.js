@@ -1,6 +1,7 @@
 import { buildMobileAlbumList } from "./mobileBrowse.js";
 
 export const JUKEBOX_SCOPES = ["all", "artist", "album"];
+export const JUKEBOX_SOURCES = ["library", "collection"];
 export const JUKEBOX_SORTS = ["artist", "album"];
 
 function normalizeText(value) {
@@ -60,4 +61,21 @@ export function wrapJukeboxIndex(index, length) {
     return 0;
   }
   return ((index % length) + length) % length;
+}
+
+// Restricts the library to the M3U-derived tracks. An album is shown when at least one of its
+// tracks is in the playlist; only those tracks are queued, and `partial` marks missing tracks.
+export function buildJukeboxSourceAlbums(tracks, source, collection, sortBy = "artist") {
+  const allAlbums = buildJukeboxAlbums(tracks, sortBy);
+  if (source !== "collection") {
+    return allAlbums;
+  }
+
+  const included = new Set((collection?.trackIds || []).map(String));
+  const subset = (Array.isArray(tracks) ? tracks : []).filter(track => included.has(String(track.id)));
+  const totals = new Map(allAlbums.map(album => [album.id, album.trackCount]));
+  return buildJukeboxAlbums(subset, sortBy).map(album => {
+    const totalTrackCount = totals.get(album.id) || album.trackCount;
+    return { ...album, totalTrackCount, partial: album.trackCount < totalTrackCount };
+  });
 }

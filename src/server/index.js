@@ -6,6 +6,7 @@ import { parseFile } from "music-metadata";
 import { rateLimit } from "express-rate-limit";
 import { scanLibrary } from "./scanner.js";
 import { computeStats } from "./stats.js";
+import { createJukeboxCollectionManager } from "./jukeboxCollection.js";
 
 const CACHE_VERSION = 2;
 const ARTWORK_FILE_NAMES = [
@@ -33,6 +34,8 @@ const __dirname = path.dirname(__filename);
 
 const configPath = path.join(__dirname, "..", "..", "config.json");
 const config = normalizeConfig(JSON.parse(fs.readFileSync(configPath, "utf-8")));
+
+const jukeboxManager = createJukeboxCollectionManager(config, path.join(__dirname, "..", ".."));
 
 const app = express();
 const PORT = Number.parseInt(process.env.PORT || "3001", 10);
@@ -298,6 +301,26 @@ app.get("/api/library", async (req, res) => {
   } catch (err) {
     console.error("Error in /api/library:", err);
     return res.status(500).json({ error: "Failed to load library" });
+  }
+});
+
+app.get("/api/jukebox", async (req, res) => {
+  try {
+    const stats = await getStatsPayload();
+    return res.json(jukeboxManager.getCollection(stats));
+  } catch (err) {
+    console.error("Error in /api/jukebox:", err);
+    return res.status(500).json({ error: "Failed to load jukebox collection" });
+  }
+});
+
+app.get("/api/jukebox/refresh", async (req, res) => {
+  try {
+    const stats = await getStatsPayload();
+    return res.json(jukeboxManager.getCollection(stats, { forceRefresh: true }));
+  } catch (err) {
+    console.error("Error in /api/jukebox/refresh:", err);
+    return res.status(500).json({ error: "Failed to refresh jukebox collection" });
   }
 });
 

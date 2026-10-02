@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   buildJukeboxAlbums,
   buildJukeboxLetterIndex,
+  buildJukeboxSourceAlbums,
   filterJukeboxAlbums,
   getJukeboxLetter,
   wrapJukeboxIndex
@@ -47,4 +48,18 @@ test("jukebox index wraps", () => {
   assert.strictEqual(wrapJukeboxIndex(-1, 4), 3);
   assert.strictEqual(wrapJukeboxIndex(4, 4), 0);
   assert.strictEqual(wrapJukeboxIndex(2, 0), 0);
+});
+
+test("collection source keeps only listed tracks and flags partial albums", () => {
+  const library = [
+    ...tracks,
+    { id: "5", title: "Other", artist: "Kansas", album: "Leftoverture", trackNumber: 2 }
+  ];
+  const collection = { trackIds: ["2", "1"] };
+  const albums = buildJukeboxSourceAlbums(library, "collection", collection);
+  assert.deepStrictEqual(albums.map(a => [a.album, a.trackCount, a.partial]), [
+    ["Arrival", 1, false],
+    ["Leftoverture", 1, true]
+  ]);
+  assert.strictEqual(buildJukeboxSourceAlbums(library, "library", collection).length, 4);
 });

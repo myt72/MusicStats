@@ -25,8 +25,8 @@ import {
 } from "./mobileBrowse";
 import {
   JUKEBOX_SCOPES,
-  buildJukeboxAlbums,
   buildJukeboxLetterIndex,
+  buildJukeboxSourceAlbums,
   filterJukeboxAlbums,
   getJukeboxLetter,
   wrapJukeboxIndex
@@ -624,6 +624,9 @@ function App() {
   const [jukeboxScope, setJukeboxScope] = useState("all");
   const [jukeboxSort, setJukeboxSort] = useState("artist");
   const [jukeboxPosition, setJukeboxPosition] = useState(0);
+  const [jukeboxSource, setJukeboxSource] = useState("library");
+  const [jukeboxCollection, setJukeboxCollection] = useState(null);
+  const [jukeboxRefreshing, setJukeboxRefreshing] = useState(false);
   const jukeboxCarouselRef = useRef(null);
   const jukeboxScrollFrameRef = useRef(0);
   const [mobileArtist, setMobileArtist] = useState(null);
@@ -659,6 +662,19 @@ function App() {
       setError(err.message || "Failed to load stats.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadJukeboxCollection(refresh = false) {
+    try {
+      setJukeboxRefreshing(true);
+      const collection = await fetchJson(`${API_BASE_URL}/jukebox${refresh ? "/refresh" : ""}`);
+      setJukeboxCollection(collection);
+    } catch (err) {
+      console.error(err);
+      setJukeboxCollection({ configured: true, available: false, error: err.message, trackIds: [] });
+    } finally {
+      setJukeboxRefreshing(false);
     }
   }
 
@@ -1078,8 +1094,8 @@ function App() {
   }, [mobileOutputControlsAvailable, mobilePage]);
 
   const jukeboxAlbums = useMemo(
-    () => buildJukeboxAlbums(library.tracks, jukeboxSort),
-    [library.tracks, jukeboxSort]
+    () => buildJukeboxSourceAlbums(library.tracks, jukeboxSource, jukeboxCollection, jukeboxSort),
+    [library.tracks, jukeboxSource, jukeboxCollection, jukeboxSort]
   );
   const jukeboxFiltered = useMemo(
     () => filterJukeboxAlbums(jukeboxAlbums, jukeboxQuery, jukeboxScope),
@@ -1091,6 +1107,13 @@ function App() {
   );
   const jukeboxCurrentIndex = wrapJukeboxIndex(jukeboxPosition, jukeboxFiltered.length);
   const jukeboxCurrent = jukeboxFiltered[jukeboxCurrentIndex] || null;
+
+  // Re-check the playlist (cheap mtime check on the server) whenever the jukebox opens or the source toggles.
+  useEffect(() => {
+    if (mobilePage === "jukebox" && jukeboxSource === "collection") {
+      loadJukeboxCollection(false);
+    }
+  }, [mobilePage, jukeboxSource]);
 
   function scrollJukeboxTo(position) {
     const node = jukeboxCarouselRef.current;
@@ -1470,6 +1493,49 @@ function App() {
                   <div className="jukebox-cabinet">
                     <div className="jukebox-marquee">♫ Jukebox ♫</div>
                     <div className="jukebox-controls">
+                      <div className="mobile-action-row" role="group" aria-label="Jukebox source">
+                        {[
+                          ["library", "Full Library"],
+                          ["collection", "Jukebox Collection"]
+                        ].map(([source, label]) => (
+                          <button
+                            key={source}
+                            type="button"
+                            className={jukeboxSource === source ? "tab active" : "tab"}
+                            aria-pressed={jukeboxSource === source}
+                            onClick={() => {
+                              setJukeboxSource(source);
+                              setJukeboxPosition(0);
+                            }}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                        {jukeboxSource === "collection" && (
+                          <button
+                            type="button"
+                            className="tab"
+                            disabled={jukeboxRefreshing}
+                            onClick={() => loadJukeboxCollection(true)}
+                          >
+                            {jukeboxRefreshing ? "Refreshing…" : "Refresh"}
+                          </button>
+                        )}
+                      </div>
+                      {jukeboxSource === "collection" && jukeboxCollection && (
+                        <p className="panel-note">
+                          {!jukeboxCollection.configured
+                            ? "Set jukeboxPlaylist in config.json to an M3U file."
+                            : jukeboxCollection.error ||
+                              `${formatCount(jukeboxCollection.source.matchedCount)} of ${formatCount(
+                                jukeboxCollection.source.entryCount
+                              )} playlist entries matched${
+                                jukeboxCollection.source.unmatchedCount
+                                  ? ` (${formatCount(jukeboxCollection.source.unmatchedCount)} not in library)`
+                                  : ""
+                              }`}
+                        </p>
+                      )}
                       <input
                         className="search-input"
                         type="search"
@@ -1550,7 +1616,11 @@ function App() {
                         </div>
                         <span className="mobile-list-meta jukebox-count">
                           {formatCount(jukeboxCurrentIndex + 1)} of {formatCount(jukeboxFiltered.length)} •{" "}
-                          {formatCount(jukeboxCurrent.trackCount)} tracks
+                          {jukeboxCurrent.partial
+                            ? `${formatCount(jukeboxCurrent.trackCount)} of ${formatCount(
+                                jukeboxCurrent.totalTrackCount
+                              )} tracks`
+                            : `${formatCount(jukeboxCurrent.trackCount)} tracks`}
                         </span>
                       </div>
                     ) : (
