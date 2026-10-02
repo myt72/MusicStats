@@ -31,6 +31,9 @@ import {
   getJukeboxLetter,
   wrapJukeboxIndex
 } from "./jukebox";
+
+const JUKEBOX_ITEM_WIDTH = 190;
+const JUKEBOX_RENDER_RADIUS = 6;
 import { getPreferredBrowserOutputId, hasPlaybackOutputControls, prioritizeBrowserOutput } from "./outputDevices";
 const numberFormatter = new Intl.NumberFormat();
 const PHONE_MEDIA_QUERY = "(max-width: 700px)";
@@ -621,6 +624,8 @@ function App() {
   const [jukeboxScope, setJukeboxScope] = useState("all");
   const [jukeboxSort, setJukeboxSort] = useState("artist");
   const [jukeboxPosition, setJukeboxPosition] = useState(0);
+  const jukeboxCarouselRef = useRef(null);
+  const jukeboxScrollFrameRef = useRef(0);
   const [mobileArtist, setMobileArtist] = useState(null);
   const [mobileAlbum, setMobileAlbum] = useState(null);
   const [mobileBrowseQuery, setMobileBrowseQuery] = useState("");
@@ -1087,6 +1092,34 @@ function App() {
   const jukeboxCurrentIndex = wrapJukeboxIndex(jukeboxPosition, jukeboxFiltered.length);
   const jukeboxCurrent = jukeboxFiltered[jukeboxCurrentIndex] || null;
 
+  function scrollJukeboxTo(position) {
+    const node = jukeboxCarouselRef.current;
+    setJukeboxPosition(position);
+    if (node) {
+      node.scrollTo({ left: position * JUKEBOX_ITEM_WIDTH, behavior: "smooth" });
+    }
+  }
+
+  function handleJukeboxScroll(event) {
+    const node = event.currentTarget;
+    if (jukeboxScrollFrameRef.current) {
+      return;
+    }
+    jukeboxScrollFrameRef.current = requestAnimationFrame(() => {
+      jukeboxScrollFrameRef.current = 0;
+      const index = Math.round(node.scrollLeft / JUKEBOX_ITEM_WIDTH);
+      const clamped = Math.min(Math.max(index, 0), Math.max(jukeboxFiltered.length - 1, 0));
+      setJukeboxPosition(clamped);
+    });
+  }
+
+  useEffect(() => {
+    const node = jukeboxCarouselRef.current;
+    if (node && Math.round(node.scrollLeft / JUKEBOX_ITEM_WIDTH) !== jukeboxCurrentIndex) {
+      node.scrollTo({ left: jukeboxCurrentIndex * JUKEBOX_ITEM_WIDTH, behavior: "auto" });
+    }
+  }, [jukeboxCurrentIndex, jukeboxFiltered, mobilePage]);
+
   function playJukeboxAlbum(album) {
     if (!album) {
       return;
@@ -1483,31 +1516,42 @@ function App() {
                     </div>
                     {jukeboxCurrent ? (
                       <div className="jukebox-window" aria-live="polite">
-                        <button
-                          type="button"
-                          className="jukebox-arrow"
-                          aria-label="Previous album"
-                          onClick={() => setJukeboxPosition(jukeboxCurrentIndex - 1)}
+                        <div
+                          className="jukebox-carousel"
+                          ref={jukeboxCarouselRef}
+                          onScroll={handleJukeboxScroll}
+                          role="listbox"
+                          aria-label="Swipe to browse albums"
                         >
-                          ◀
-                        </button>
-                        <div className="jukebox-record">
-                          <AlbumArt trackId={jukeboxCurrent.albumArtTrackId} size="large" />
-                          <strong>{jukeboxCurrent.album}</strong>
-                          <span className="mobile-list-meta">{jukeboxCurrent.artist}</span>
-                          <span className="mobile-list-meta">
-                            {formatCount(jukeboxCurrentIndex + 1)} of {formatCount(jukeboxFiltered.length)} •{" "}
-                            {formatCount(jukeboxCurrent.trackCount)} tracks
-                          </span>
+                          <div className="jukebox-track" style={{ width: jukeboxFiltered.length * JUKEBOX_ITEM_WIDTH }}>
+                            {jukeboxFiltered
+                              .slice(
+                                Math.max(0, jukeboxCurrentIndex - JUKEBOX_RENDER_RADIUS),
+                                jukeboxCurrentIndex + JUKEBOX_RENDER_RADIUS + 1
+                              )
+                              .map((album, offset) => {
+                                const position = Math.max(0, jukeboxCurrentIndex - JUKEBOX_RENDER_RADIUS) + offset;
+                                return (
+                                  <div
+                                    key={album.id}
+                                    role="option"
+                                    aria-selected={position === jukeboxCurrentIndex}
+                                    className={position === jukeboxCurrentIndex ? "jukebox-record active" : "jukebox-record"}
+                                    style={{ left: position * JUKEBOX_ITEM_WIDTH, width: JUKEBOX_ITEM_WIDTH }}
+                                    onClick={() => scrollJukeboxTo(position)}
+                                  >
+                                    <AlbumArt trackId={album.albumArtTrackId} size="large" />
+                                    <strong>{album.album}</strong>
+                                    <span className="mobile-list-meta">{album.artist}</span>
+                                  </div>
+                                );
+                              })}
+                          </div>
                         </div>
-                        <button
-                          type="button"
-                          className="jukebox-arrow"
-                          aria-label="Next album"
-                          onClick={() => setJukeboxPosition(jukeboxCurrentIndex + 1)}
-                        >
-                          ▶
-                        </button>
+                        <span className="mobile-list-meta jukebox-count">
+                          {formatCount(jukeboxCurrentIndex + 1)} of {formatCount(jukeboxFiltered.length)} •{" "}
+                          {formatCount(jukeboxCurrent.trackCount)} tracks
+                        </span>
                       </div>
                     ) : (
                       <p className="panel-note">No albums matched that filter.</p>
@@ -1536,7 +1580,7 @@ function App() {
                         className="jukebox-letter"
                         disabled={!jukeboxLetters.has(letter)}
                         aria-label={`Jump to ${letter}`}
-                        onClick={() => setJukeboxPosition(jukeboxLetters.get(letter))}
+                        onClick={() => scrollJukeboxTo(jukeboxLetters.get(letter))}
                       >
                         {letter}
                       </button>
@@ -1552,7 +1596,7 @@ function App() {
                             <button
                               type="button"
                               className={position === jukeboxCurrentIndex ? "jukebox-strip active" : "jukebox-strip"}
-                              onClick={() => setJukeboxPosition(position)}
+                              onClick={() => scrollJukeboxTo(position)}
                             >
                               <span className="jukebox-strip-letter">
                                 {getJukeboxLetter(jukeboxSort === "album" ? album.album : album.artist)}

@@ -950,7 +950,6 @@
 
 .jukebox-window {
   display: grid;
-  grid-template-columns: 48px 1fr 48px;
   gap: 8px;
   align-items: center;
   padding: 10px;
@@ -968,11 +967,46 @@
   overflow-wrap: anywhere;
 }
 
-.jukebox-arrow {
-  min-height: 48px;
-  min-width: 48px;
-  border-radius: 50%;
-  font-size: 1.2rem;
+.jukebox-carousel {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x pan-y;
+  scrollbar-width: none;
+}
+
+.jukebox-carousel::-webkit-scrollbar {
+  display: none;
+}
+
+.jukebox-track {
+  position: relative;
+  height: 280px;
+  margin-inline: calc(50% - 95px);
+}
+
+.jukebox-track .jukebox-record {
+  position: absolute;
+  top: 0;
+  box-sizing: border-box;
+  padding: 8px;
+  align-content: start;
+  scroll-snap-align: center;
+  scroll-snap-stop: always;
+  opacity: 0.55;
+  transform: scale(0.9);
+  transition: opacity 0.15s, transform 0.15s;
+}
+
+.jukebox-track .jukebox-record.active {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.jukebox-count {
+  text-align: center;
 }
 
 .jukebox-play {
