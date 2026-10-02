@@ -23,6 +23,14 @@ import {
   buildMobileTrackList,
   searchMobileLibrary
 } from "./mobileBrowse";
+import {
+  JUKEBOX_SCOPES,
+  buildJukeboxAlbums,
+  buildJukeboxLetterIndex,
+  filterJukeboxAlbums,
+  getJukeboxLetter,
+  wrapJukeboxIndex
+} from "./jukebox";
 import { getPreferredBrowserOutputId, hasPlaybackOutputControls, prioritizeBrowserOutput } from "./outputDevices";
 const numberFormatter = new Intl.NumberFormat();
 const PHONE_MEDIA_QUERY = "(max-width: 700px)";
@@ -609,6 +617,10 @@ function App() {
   });
   const [showPhoneStats, setShowPhoneStats] = useState(false);
   const [mobilePage, setMobilePage] = useState("library");
+  const [jukeboxQuery, setJukeboxQuery] = useState("");
+  const [jukeboxScope, setJukeboxScope] = useState("all");
+  const [jukeboxSort, setJukeboxSort] = useState("artist");
+  const [jukeboxPosition, setJukeboxPosition] = useState(0);
   const [mobileArtist, setMobileArtist] = useState(null);
   const [mobileAlbum, setMobileAlbum] = useState(null);
   const [mobileBrowseQuery, setMobileBrowseQuery] = useState("");
@@ -1044,6 +1056,7 @@ function App() {
   );
   const mobileTabs = [
     ["library", "Library"],
+    ["jukebox", "Jukebox"],
     ["search", "Search"],
     ["now-playing", "Now Playing"],
     ...(mobileOutputControlsAvailable ? [["output", "Output"]] : [])
@@ -1058,6 +1071,28 @@ function App() {
       setMobilePage("now-playing");
     }
   }, [mobileOutputControlsAvailable, mobilePage]);
+
+  const jukeboxAlbums = useMemo(
+    () => buildJukeboxAlbums(library.tracks, jukeboxSort),
+    [library.tracks, jukeboxSort]
+  );
+  const jukeboxFiltered = useMemo(
+    () => filterJukeboxAlbums(jukeboxAlbums, jukeboxQuery, jukeboxScope),
+    [jukeboxAlbums, jukeboxQuery, jukeboxScope]
+  );
+  const jukeboxLetters = useMemo(
+    () => buildJukeboxLetterIndex(jukeboxFiltered, jukeboxSort),
+    [jukeboxFiltered, jukeboxSort]
+  );
+  const jukeboxCurrentIndex = wrapJukeboxIndex(jukeboxPosition, jukeboxFiltered.length);
+  const jukeboxCurrent = jukeboxFiltered[jukeboxCurrentIndex] || null;
+
+  function playJukeboxAlbum(album) {
+    if (!album) {
+      return;
+    }
+    playQueueTracks(album.tracks);
+  }
 
   function openMobileArtist(artist) {
     setMobileArtist(artist);
@@ -1397,7 +1432,143 @@ function App() {
                   </button>
                 ))}
               </div>
-              {mobilePage === "library" ? (
+              {mobilePage === "jukebox" ? (
+                <div className="jukebox-pane">
+                  <div className="jukebox-cabinet">
+                    <div className="jukebox-marquee">♫ Jukebox ♫</div>
+                    <div className="jukebox-controls">
+                      <input
+                        className="search-input"
+                        type="search"
+                        aria-label="Filter jukebox albums"
+                        placeholder="Filter by artist or album"
+                        value={jukeboxQuery}
+                        onChange={event => {
+                          setJukeboxQuery(event.target.value);
+                          setJukeboxPosition(0);
+                        }}
+                      />
+                      <div className="mobile-action-row" role="group" aria-label="Filter by">
+                        {JUKEBOX_SCOPES.map(scope => (
+                          <button
+                            key={scope}
+                            type="button"
+                            className={jukeboxScope === scope ? "tab active" : "tab"}
+                            aria-pressed={jukeboxScope === scope}
+                            onClick={() => {
+                              setJukeboxScope(scope);
+                              setJukeboxPosition(0);
+                            }}
+                          >
+                            {scope === "all" ? "Both" : scope === "artist" ? "Artist" : "Album"}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="mobile-action-row" role="group" aria-label="Sort by">
+                        {["artist", "album"].map(sort => (
+                          <button
+                            key={sort}
+                            type="button"
+                            className={jukeboxSort === sort ? "tab active" : "tab"}
+                            aria-pressed={jukeboxSort === sort}
+                            onClick={() => {
+                              setJukeboxSort(sort);
+                              setJukeboxPosition(0);
+                            }}
+                          >
+                            Sort by {sort}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {jukeboxCurrent ? (
+                      <div className="jukebox-window" aria-live="polite">
+                        <button
+                          type="button"
+                          className="jukebox-arrow"
+                          aria-label="Previous album"
+                          onClick={() => setJukeboxPosition(jukeboxCurrentIndex - 1)}
+                        >
+                          ◀
+                        </button>
+                        <div className="jukebox-record">
+                          <AlbumArt trackId={jukeboxCurrent.albumArtTrackId} size="large" />
+                          <strong>{jukeboxCurrent.album}</strong>
+                          <span className="mobile-list-meta">{jukeboxCurrent.artist}</span>
+                          <span className="mobile-list-meta">
+                            {formatCount(jukeboxCurrentIndex + 1)} of {formatCount(jukeboxFiltered.length)} •{" "}
+                            {formatCount(jukeboxCurrent.trackCount)} tracks
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          className="jukebox-arrow"
+                          aria-label="Next album"
+                          onClick={() => setJukeboxPosition(jukeboxCurrentIndex + 1)}
+                        >
+                          ▶
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="panel-note">No albums matched that filter.</p>
+                    )}
+                    <div className="mobile-action-row">
+                      <button
+                        type="button"
+                        className="tab active jukebox-play"
+                        disabled={!jukeboxCurrent}
+                        onClick={() => playJukeboxAlbum(jukeboxCurrent)}
+                      >
+                        ▶ Play album
+                      </button>
+                      {mobileOutputControlsAvailable && (
+                        <button type="button" className="tab" onClick={() => setMobilePage("output")}>
+                          Output device
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="jukebox-letter-rail" role="group" aria-label="Jump to letter">
+                    {["#", ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ"].map(letter => (
+                      <button
+                        key={letter}
+                        type="button"
+                        className="jukebox-letter"
+                        disabled={!jukeboxLetters.has(letter)}
+                        aria-label={`Jump to ${letter}`}
+                        onClick={() => setJukeboxPosition(jukeboxLetters.get(letter))}
+                      >
+                        {letter}
+                      </button>
+                    ))}
+                  </div>
+                  <ul className="jukebox-strips" aria-label="Album selections">
+                    {jukeboxFiltered
+                      .slice(Math.max(0, jukeboxCurrentIndex - 3), jukeboxCurrentIndex + 12)
+                      .map(album => {
+                        const position = jukeboxFiltered.indexOf(album);
+                        return (
+                          <li key={album.id}>
+                            <button
+                              type="button"
+                              className={position === jukeboxCurrentIndex ? "jukebox-strip active" : "jukebox-strip"}
+                              onClick={() => setJukeboxPosition(position)}
+                            >
+                              <span className="jukebox-strip-letter">
+                                {getJukeboxLetter(jukeboxSort === "album" ? album.album : album.artist)}
+                              </span>
+                              <span className="mobile-list-body">
+                                <span className="mobile-list-title">{album.album}</span>
+                                <span className="mobile-list-meta">{album.artist}</span>
+                              </span>
+                            </button>
+                          </li>
+                        );
+                      })}
+                  </ul>
+                </div>
+              ) : null}
+              {mobilePage === "jukebox" ? null : mobilePage === "library" ? (
                 <div className="mobile-library-pane">
                   <div className="mobile-library-header">
                     <div>
